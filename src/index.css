@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Outfit", "Inter", "Noto Sans Devanagari", system-ui, sans-serif;
+  --font-serif: "Outfit", Georgia, serif;
+  --font-mono: "IBM Plex Mono", monospace;
+
+  --color-primary: #1F3864;
+  --color-accent: #D4A017;
+  --color-bg-main: #F7F7F5;
+  --color-card: #FFFFFF;
+  --color-text-primary: #222222;
+  --color-text-secondary: #6B7280;
+  --color-border: #E5E7EB;
+  --color-success: #22C55E;
+  --color-warning: #F59E0B;
+  --color-error: #EF4444;
+}
+
+:root {
+  --primary-navy: #1F3864;
+  --accent-gold: #D4A017;
+  --bg-main: #F7F7F5;
+  --card-bg: #FFFFFF;
+  --text-primary: #222222;
+  --text-secondary: #6B7280;
+  --border-color: #E5E7EB;
+}
+
+body {
+  font-family: 'Outfit', 'Inter', 'Noto Sans Devanagari', sans-serif;
+  background-color: #FFFFFF;
+  color: #1E293B;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-sans {
+  font-family: 'Outfit', 'Inter', 'Noto Sans Devanagari', sans-serif;
+}
+
+.font-fraunces {
+  font-family: 'Fraunces', serif;
+}
+
+.font-mono-plex {
+  font-family: 'IBM Plex Mono', monospace;
+}
+

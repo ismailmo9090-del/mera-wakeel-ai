@@ -1,0 +1,139 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F1D38" />
+      <stop offset="100%" stop-color="#1E3054" />
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F59E0B" />
+      <stop offset="100%" stop-color="#D97706" />
+    </linearGradient>
+    <linearGradient id="accentGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#D4A017" stop-opacity="0.3" />
+      <stop offset="100%" stop-color="#3B82F6" stop-opacity="0" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#0F1D38" flood-opacity="0.25" />
+    </filter>
+  </defs>
+
+  <!-- Background Canvas -->
+  <rect width="800" height="600" rx="32" fill="url(#bgGrad)" />
+
+  <!-- Ambient Glow Elements -->
+  <circle cx="700" cy="100" r="180" fill="url(#accentGlow)" />
+  <circle cx="100" cy="500" r="150" fill="url(#accentGlow)" />
+
+  <!-- Decorative Legal Grid Lines -->
+  <g opacity="0.08" stroke="#FFFFFF" stroke-width="1">
+    <line x1="0" y1="150" x2="800" y2="150" />
+    <line x1="0" y1="300" x2="800" y2="300" />
+    <line x1="0" y1="450" x2="800" y2="450" />
+    <line x1="200" y1="0" x2="200" y2="600" />
+    <line x1="400" y1="0" x2="400" y2="600" />
+    <line x1="600" y1="0" x2="600" y2="600" />
+  </g>
+
+  <!-- Main Legal Desk / Consultation Surface -->
+  <rect x="60" y="440" width="680" height="24" rx="12" fill="#2A3D66" />
+  <rect x="100" y="464" width="600" height="80" fill="#182744" rx="8" opacity="0.8" />
+
+  <!-- ADVOCATE CHARACTER (Left Side) -->
+  <g id="advocate">
+    <!-- Body / Suit -->
+    <path d="M 160 440 C 160 320 200 290 250 290 C 300 290 340 320 340 440 Z" fill="#0B132B" />
+    <!-- White Advocate Collar Band (Gown Band) -->
+    <polygon points="240,320 260,320 265,360 250,355 235,360" fill="#FFFFFF" />
+    <polygon points="248,320 252,320 252,380 248,380" fill="#E2E8F0" />
+    <!-- Coat Lapels -->
+    <path d="M 210 320 L 238 380 L 220 440" stroke="#334155" stroke-width="3" fill="none" />
+    <path d="M 290 320 L 262 380 L 280 440" stroke="#334155" stroke-width="3" fill="none" />
+    <!-- Head & Hair -->
+    <circle cx="250" cy="245" r="38" fill="#D97706" opacity="0.1" /> <!-- Head aura -->
+    <circle cx="250" cy="240" r="32" fill="#E5C09B" /> <!-- Face -->
+    <path d="M 220 230 C 220 200 280 200 280 230 C 270 215 230 215 220 230 Z" fill="#1E293B" /> <!-- Hair -->
+    <circle cx="240" cy="240" r="3" fill="#1E293B" /> <!-- Eye L -->
+    <circle cx="260" cy="240" r="3" fill="#1E293B" /> <!-- Eye R -->
+    <path d="M 242 254 Q 250 260 258 254" stroke="#1E293B" stroke-width="2.5" fill="none" stroke-linecap="round" /> <!-- Smile -->
+    <!-- Glasses -->
+    <circle cx="240" cy="240" r="9" stroke="#D4A017" stroke-width="2" fill="none" />
+    <circle cx="260" cy="240" r="9" stroke="#D4A017" stroke-width="2" fill="none" />
+    <line x1="249" y1="240" x2="251" y2="240" stroke="#D4A017" stroke-width="2" />
+  </g>
+
+  <!-- CENTER LAPTOP DISPLAYING MERA WAKEEL AI -->
+  <g id="laptop" filter="url(#shadow)">
+    <!-- Laptop Base -->
+    <rect x="330" y="420" width="160" height="12" rx="4" fill="#64748B" />
+    <rect x="380" y="420" width="60" height="4" rx="2" fill="#94A3B8" />
+    <!-- Laptop Screen Outer -->
+    <rect x="340" y="280" width="140" height="140" rx="10" fill="#1E293B" stroke="#475569" stroke-width="2" />
+    <!-- Screen Glass -->
+    <rect x="346" y="286" width="128" height="128" rx="6" fill="#0F172A" />
+    <!-- Screen Content: Mera Wakeel AI Header -->
+    <rect x="352" y="292" width="116" height="20" rx="4" fill="#1E3864" />
+    <circle cx="362" cy="302" r="5" fill="#D4A017" />
+    <text x="372" y="306" font-family="'Outfit', sans-serif" font-weight="bold" font-size="9" fill="#FFFFFF">Mera Wakeel AI</text>
+    <!-- Screen Content: Scales of Justice Emblem -->
+    <g transform="translate(410, 345)">
+      <circle cx="0" cy="0" r="22" fill="#D4A017" opacity="0.15" />
+      <path d="M 0 -12 L 0 12 M -12 12 L 12 12 M -12 -4 L 12 -4" stroke="#D4A017" stroke-width="2" stroke-linecap="round" />
+      <path d="M -12 -4 L -18 4 M -12 -4 L -6 4" stroke="#D4A017" stroke-width="1.5" />
+      <path d="M 12 -4 L 6 4 M 12 -4 L 18 4" stroke="#D4A017" stroke-width="1.5" />
+      <path d="M -22 4 Q -12 10 -2 4" stroke="#D4A017" stroke-width="1.5" fill="none" />
+      <path d="M 2 4 Q 12 10 22 4" stroke="#D4A017" stroke-width="1.5" fill="none" />
+    </g>
+    <!-- AI Status Pill -->
+    <rect x="360" y="385" width="100" height="16" rx="8" fill="#10B981" opacity="0.2" />
+    <circle cx="368" cy="393" r="3" fill="#10B981" />
+    <text x="375" y="396" font-family="'Outfit', sans-serif" font-weight="600" font-size="8" fill="#10B981">AI Live Guidance</text>
+  </g>
+
+  <!-- COUPLE CLIENTS (Right Side) -->
+  <g id="clients">
+    <!-- Male Client -->
+    <path d="M 520 440 C 520 330 550 310 590 310 C 630 310 660 330 660 440 Z" fill="#1E3A8A" />
+    <circle cx="590" cy="260" r="30" fill="#F3C293" />
+    <path d="M 565 250 C 565 225 615 225 615 250 C 605 235 575 235 565 250 Z" fill="#331800" />
+    <circle cx="580" cy="260" r="2.5" fill="#1E293B" />
+    <circle cx="600" cy="260" r="2.5" fill="#1E293B" />
+    <path d="M 582 272 Q 590 277 598 272" stroke="#1E293B" stroke-width="2" fill="none" stroke-linecap="round" />
+
+    <!-- Female Client -->
+    <path d="M 610 440 C 610 340 640 320 680 320 C 720 320 740 340 740 440 Z" fill="#991B1B" />
+    <circle cx="680" cy="270" r="28" fill="#E8B080" />
+    <path d="M 650 270 Q 680 220 710 270 Q 720 300 700 320 L 660 320 Z" fill="#1C1917" /> <!-- Long Hair -->
+    <circle cx="670" cy="270" r="2.5" fill="#1E293B" />
+    <circle cx="690" cy="270" r="2.5" fill="#1E293B" />
+    <path d="M 672 282 Q 680 287 688 282" stroke="#1E293B" stroke-width="2" fill="none" stroke-linecap="round" />
+  </g>
+
+  <!-- FLOATING LEGAL BADGES -->
+  <!-- Badge 1: 100% Confidential -->
+  <g transform="translate(100, 100)" filter="url(#shadow)">
+    <rect x="0" y="0" width="170" height="48" rx="24" fill="#FFFFFF" opacity="0.95" />
+    <circle cx="24" cy="24" r="16" fill="#FEF3C7" />
+    <path d="M 24 14 L 30 17 L 30 24 C 30 29 24 33 24 33 C 24 33 18 29 18 24 L 18 17 Z" fill="#D97706" />
+    <text x="48" y="22" font-family="'Outfit', sans-serif" font-weight="bold" font-size="11" fill="#0F1D38">100% Confidential</text>
+    <text x="48" y="34" font-family="'Outfit', sans-serif" font-size="9" fill="#64748B">Legal Privacy Guaranteed</text>
+  </g>
+
+  <!-- Badge 2: Supreme & High Court AI -->
+  <g transform="translate(530, 90)" filter="url(#shadow)">
+    <rect x="0" y="0" width="180" height="48" rx="24" fill="#FFFFFF" opacity="0.95" />
+    <circle cx="24" cy="24" r="16" fill="#DBEAFE" />
+    <path d="M 18 28 L 24 18 L 30 28 Z M 24 20 L 24 25" stroke="#1D4ED8" stroke-width="2" stroke-linecap="round" fill="none" />
+    <text x="48" y="22" font-family="'Outfit', sans-serif" font-weight="bold" font-size="11" fill="#0F1D38">High Court Precedents</text>
+    <text x="48" y="34" font-family="'Outfit', sans-serif" font-size="9" fill="#64748B">Instant Case Law Search</text>
+  </g>
+
+  <!-- Badge 3: Verified Advocates Connected -->
+  <g transform="translate(480, 480)" filter="url(#shadow)">
+    <rect x="0" y="0" width="220" height="52" rx="26" fill="#0F1D38" stroke="#D4A017" stroke-width="1.5" />
+    <circle cx="28" cy="26" r="16" fill="#D4A017" />
+    <path d="M 22 26 L 26 30 L 34 22" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+    <text x="54" y="24" font-family="'Outfit', sans-serif" font-weight="bold" font-size="12" fill="#FFFFFF">8,500+ Verified Advocates</text>
+    <text x="54" y="38" font-family="'Outfit', sans-serif" font-weight="500" font-size="10" fill="#D4A017">State Bar Council Enrolled</text>
+  </g>
+
+</svg>
