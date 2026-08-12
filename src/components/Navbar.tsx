@@ -359,19 +359,75 @@ export const Navbar: React.FC<NavbarProps> = ({
             )}
           </div>
 
-          <div className="pt-2 border-t border-[#E5E7EB] flex items-center justify-between">
-            <button
-              onClick={onOpenAuth}
-              className="w-1/2 mr-2 bg-[#F3F4F6] text-[#374151] font-bold py-2.5 rounded-xl text-sm"
-            >
-              Login
-            </button>
-            <button
-              onClick={onOpenAuth}
-              className="w-1/2 ml-2 bg-[#D98800] text-[#FFFFFF] font-bold py-2.5 rounded-xl text-sm shadow-sm"
-            >
-              Sign Up
-            </button>
+          <div className="pt-2 border-t border-[#E5E7EB]">
+            {currentUser ? (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleNavClick(currentUser.role === 'lawyer' ? 'for-lawyers' : 'my-cases')}
+                  className="flex-1 flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-extrabold text-[#0F172A] bg-[#DCFCE7] border border-[#86EFAC]"
+                >
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#16A34A] animate-pulse shrink-0" />
+                  <span className="truncate">
+                    {currentUser.name && currentUser.name.trim().length > 0
+                      ? currentUser.name
+                      : currentUser.email
+                      ? currentUser.email.split('@')[0].toUpperCase()
+                      : 'User'}
+                  </span>
+                  <span className="text-[10px] bg-[#16A34A] text-[#FFFFFF] px-1.5 py-0.5 rounded-md font-extrabold shrink-0">
+                    Logged In
+                  </span>
+                </button>
+                {onLogout && (
+                  <button
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      onLogout();
+                    }}
+                    className="px-3 py-2.5 rounded-xl text-sm font-bold text-[#DC2626] bg-[#FEF2F2] border border-[#FCA5A5]"
+                  >
+                    Logout
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  onClick={onOpenAuth}
+                  className="flex-1 bg-[#F3F4F6] text-[#374151] font-bold py-2.5 rounded-xl text-sm"
+                >
+                  Login
+                </button>
+                <button
+                  onClick={onOpenAuth}
+                  className="flex-1 bg-[#D98800] text-[#FFFFFF] font-bold py-2.5 rounded-xl text-sm shadow-sm"
+                >
+                  Sign Up
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Mobile language switcher */}
+          <div className="pt-2 border-t border-[#E5E7EB]">
+            <div className="flex gap-2">
+              {languages.map((lang) => (
+                <button
+                  key={lang.code}
+                  onClick={() => {
+                    onLanguageChange(lang.code);
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`flex-1 py-2 rounded-lg text-xs font-bold border transition-all ${
+                    language === lang.code
+                      ? 'bg-[#0F1D38] text-[#FFFFFF] border-[#0F1D38]'
+                      : 'bg-[#FFFFFF] text-[#374151] border-[#E5E7EB]'
+                  }`}
+                >
+                  {lang.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}

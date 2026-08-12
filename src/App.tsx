@@ -62,20 +62,39 @@ export default function App() {
 
   const PROTECTED_TABS: NavTab[] = ['my-cases', 'chat', 'documents', 'settings'];
 
-  // Keep an up-to-date ref so the popstate listener (registered once) can read
-  // the current auth state without re-subscribing.
+  // Keep up-to-date refs so the popstate listener (registered once) can read
+  // the current auth state and tab without re-subscribing.
   const currentUserRef = useRef(currentUser);
   currentUserRef.current = currentUser;
+  const currentTabRef = useRef(currentTab);
+  currentTabRef.current = currentTab;
 
-  // Browser Back/Forward: derive the tab from the URL and re-render.
+  // Browser Back/Forward:
+  // - Derives the tab from the URL and re-renders (in-app navigation).
+  // - If Back lands on the same tab (i.e. the app root / a sentinel entry),
+  //   it pushes a new entry so the user can NEVER navigate out of the site.
+  // - A sentinel entry is added on first load so Back from the root does not
+  //   drop the user onto the external referrer page.
   useEffect(() => {
+    if (!sessionStorage.getItem('mw_sentinel_used')) {
+      window.history.pushState({ mw: true }, '', window.location.pathname);
+      sessionStorage.setItem('mw_sentinel_used', '1');
+    }
+
     const handlePop = () => {
       let tab = tabFromPath(window.location.pathname);
       if (PROTECTED_TABS.includes(tab) && !currentUserRef.current) {
         tab = 'auth';
+      } else if (tab === 'auth' && currentUserRef.current) {
+        tab = currentUserRef.current.role === 'lawyer' ? 'for-lawyers' : 'my-cases';
       }
+      const didChange = tab !== currentTabRef.current;
+      currentTabRef.current = tab;
       setCurrentTab(tab);
       window.scrollTo({ top: 0, behavior: 'auto' });
+      if (!didChange) {
+        window.history.pushState({ mw: true }, '', TAB_PATHS[tab]);
+      }
     };
     window.addEventListener('popstate', handlePop);
     return () => window.removeEventListener('popstate', handlePop);
@@ -198,6 +217,13 @@ export default function App() {
   }, []);
 
   const handleTabChange = (tab: NavTab) => {
+    // Logged-in users don't need the login page — go to their dashboard.
+    if (tab === 'auth' && currentUser) {
+      setCurrentTab(currentUser.role === 'lawyer' ? 'for-lawyers' : 'my-cases');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
     if (PROTECTED_TABS.includes(tab) && !currentUser) {
       setPendingRedirectTab(tab);
       setAuthInitialRole('citizen');
