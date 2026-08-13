@@ -8,7 +8,7 @@ export const APP_CONFIG = {
   subtitle: 'Nyay Ab Har Nagrik Ke Haath Mein',
 
   // Logo Configuration
-  logoUrl: 'https://zperifsbcjfmngfugfdd.supabase.co/storage/v1/object/public/logo/LOGO.png',
+  logoUrl: '/logo.png',
   
   // Theme Colors
   colors: {

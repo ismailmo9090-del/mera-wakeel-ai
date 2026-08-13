@@ -4,6 +4,9 @@ import { Logo } from '../Logo';
 import { Footer } from '../Footer';
 import { fetchLawyerConnectionsForLawyer, updateConnectionStatus, upsertLawyerProfile, supabase } from '../../lib/supabase';
 import { DirectMessagePanel } from '../DirectMessagePanel';
+import { FeatureGrid, type FeatureCardData } from '../FeatureGrid';
+import { OnboardingSteps, type OnboardingStep } from '../OnboardingSteps';
+import { SectionCTA } from '../SectionCTA';
 import {
   LayoutDashboard,
   Users,
@@ -115,6 +118,69 @@ interface ReviewItem {
   reply?: string;
 }
 
+/* How Advocates Work & Grow — 4-feature grid config (card 2 highlighted as Core Feature) */
+const FEATURE_CARDS: FeatureCardData[] = [
+  {
+    icon: FileText,
+    iconClass: 'bg-[#FEF3C7] text-[#D97706]',
+    title: '1. AI Pre-Summarized Briefs',
+    description:
+      'Review structured case summaries with factual timelines, applicable laws (BNS, IPC, NI Act, RERA), and uploaded evidence before accepting any client match.',
+  },
+  {
+    icon: Users,
+    iconClass: 'bg-[#E0F2FE] text-[#0284C7]',
+    title: '2. Matched Jurisdiction Clients',
+    description:
+      'Receive direct consultation requests from citizens located in your city and state jurisdiction who require your exact practice specialty.',
+    highlighted: true,
+    badgeText: 'Core Feature',
+  },
+  {
+    icon: DollarSign,
+    iconClass: 'bg-[#DCFCE7] text-[#16A34A]',
+    title: '3. Set Your Own Fees',
+    description:
+      'Retain 100% control over your fee structure. Set custom initial consultation charges or retainer terms directly with your clients.',
+  },
+  {
+    icon: Briefcase,
+    iconClass: 'bg-[#F3E8FF] text-[#9333EA]',
+    title: '4. Practice Management Vault',
+    description:
+      'Organize client communications, track court hearing dates, manage documents, and collect verified citizen reviews on your profile.',
+  },
+];
+
+/* 3 Simple Steps to Join as a Verified Advocate */
+const ONBOARDING_STEPS: OnboardingStep[] = [
+  {
+    number: 1,
+    title: 'Fill Enrolment Form',
+    description:
+      'Enter your State Bar Council Registration number, court practice locations, and legal specializations.',
+    icon: Edit3,
+    badgeBg: 'bg-[#0A1628]',
+  },
+  {
+    number: 2,
+    title: 'Credential Verification',
+    description:
+      'Our verification team checks your State Bar Council status and assigns the "Verified Bar Advocate" badge.',
+    icon: ShieldCheck,
+    badgeBg: 'bg-[#D97706]',
+  },
+  {
+    number: 3,
+    title: 'Receive Client Requests',
+    description:
+      'Your dashboard activates instantly to receive live AI-matched consultation requests from citizens.',
+    icon: Bell,
+    badgeBg: 'bg-[#16A34A]',
+    showSuccess: true,
+  },
+];
+
 export const ForLawyersView: React.FC<ForLawyersViewProps> = ({
   currentUser,
   onOpenLawyerAuth,
@@ -197,76 +263,27 @@ export const ForLawyersView: React.FC<ForLawyersViewProps> = ({
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="bg-[#FFFFFF] p-6 rounded-2xl border border-[#E2E8F0] shadow-2xs space-y-4 hover:border-[#D97706] transition-all">
-              <div className="w-12 h-12 bg-[#FEF3C7] text-[#D97706] rounded-xl flex items-center justify-center font-bold">
-                <FileText className="w-6 h-6" />
-              </div>
-              <h3 className="text-base font-bold text-[#0F172A]">1. AI Pre-Summarized Briefs</h3>
-              <p className="text-xs text-[#64748B] leading-relaxed">
-                Review structured case summaries with factual timelines, applicable laws (BNS, IPC, NI Act, RERA), and uploaded evidence before accepting any client match.
-              </p>
-            </div>
-
-            <div className="bg-[#FFFFFF] p-6 rounded-2xl border border-[#E2E8F0] shadow-2xs space-y-4 hover:border-[#D97706] transition-all">
-              <div className="w-12 h-12 bg-[#E0F2FE] text-[#0284C7] rounded-xl flex items-center justify-center font-bold">
-                <Users className="w-6 h-6" />
-              </div>
-              <h3 className="text-base font-bold text-[#0F172A]">2. Matched Jurisdiction Clients</h3>
-              <p className="text-xs text-[#64748B] leading-relaxed">
-                Receive direct consultation requests from citizens located in your city and state jurisdiction who require your exact practice specialty.
-              </p>
-            </div>
-
-            <div className="bg-[#FFFFFF] p-6 rounded-2xl border border-[#E2E8F0] shadow-2xs space-y-4 hover:border-[#D97706] transition-all">
-              <div className="w-12 h-12 bg-[#DCFCE7] text-[#16A34A] rounded-xl flex items-center justify-center font-bold">
-                <DollarSign className="w-6 h-6" />
-              </div>
-              <h3 className="text-base font-bold text-[#0F172A]">3. Set Your Own Fees</h3>
-              <p className="text-xs text-[#64748B] leading-relaxed">
-                Retain 100% control over your fee structure. Set custom initial consultation charges or retainer terms directly with your clients.
-              </p>
-            </div>
-
-            <div className="bg-[#FFFFFF] p-6 rounded-2xl border border-[#E2E8F0] shadow-2xs space-y-4 hover:border-[#D97706] transition-all">
-              <div className="w-12 h-12 bg-[#F3E8FF] text-[#9333EA] rounded-xl flex items-center justify-center font-bold">
-                <Briefcase className="w-6 h-6" />
-              </div>
-              <h3 className="text-base font-bold text-[#0F172A]">4. Practice Management Vault</h3>
-              <p className="text-xs text-[#64748B] leading-relaxed">
-                Organize client communications, track court hearing dates, manage documents, and collect verified citizen reviews on your profile.
-              </p>
-            </div>
-          </div>
+          <FeatureGrid cards={FEATURE_CARDS} />
         </section>
 
         {/* 3 Step Enrolment */}
-        <section className="bg-[#F1F5F9] py-16 px-4 md:px-8 border-y border-[#E2E8F0]">
+        <section className="bg-gradient-to-b from-[#FFFFFF] via-[#F8FAFC] to-[#F1F5F9] py-16 px-4 md:px-8 border-y border-[#E2E8F0]">
           <div className="max-w-5xl mx-auto space-y-10">
             <div className="text-center space-y-2">
-              <h2 className="text-2xl font-extrabold text-[#0F172A]">3 Simple Steps to Join as a Verified Advocate</h2>
-              <p className="text-xs text-[#64748B]">Enrollment process for Bar Council registered advocates</p>
+              <h2 className="text-[28px] md:text-[32px] font-extrabold text-[#0F172A] tracking-tight leading-tight">
+                3 Simple Steps to Join as a Verified Advocate
+              </h2>
+              <p className="text-xs md:text-sm text-[#64748B]">Enrollment process for Bar Council registered advocates</p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-[#FFFFFF] p-6 rounded-2xl border border-[#CBD5E1] space-y-3 relative">
-                <div className="w-8 h-8 rounded-full bg-[#0A1628] text-[#FFFFFF] font-extrabold text-xs flex items-center justify-center">1</div>
-                <h4 className="font-bold text-[#0F172A] text-sm">Fill Enrolment Form</h4>
-                <p className="text-xs text-[#64748B]">Enter your State Bar Council Registration number, court practice locations, and legal specializations.</p>
-              </div>
+            <OnboardingSteps steps={ONBOARDING_STEPS} />
 
-              <div className="bg-[#FFFFFF] p-6 rounded-2xl border border-[#CBD5E1] space-y-3 relative">
-                <div className="w-8 h-8 rounded-full bg-[#D97706] text-[#FFFFFF] font-extrabold text-xs flex items-center justify-center">2</div>
-                <h4 className="font-bold text-[#0F172A] text-sm">Credential Verification</h4>
-                <p className="text-xs text-[#64748B]">Our verification team checks your State Bar Council status and assigns the "Verified Bar Advocate" badge.</p>
-              </div>
-
-              <div className="bg-[#FFFFFF] p-6 rounded-2xl border border-[#CBD5E1] space-y-3 relative">
-                <div className="w-8 h-8 rounded-full bg-[#16A34A] text-[#FFFFFF] font-extrabold text-xs flex items-center justify-center">3</div>
-                <h4 className="font-bold text-[#0F172A] text-sm">Receive Client Requests</h4>
-                <p className="text-xs text-[#64748B]">Your dashboard activates instantly to receive live AI-matched consultation requests from citizens.</p>
-              </div>
-            </div>
+            <SectionCTA
+              title="Ab Verified Advocate Bane"
+              subtitle="Bar Council registered advocates ke liye 100% free registration"
+              buttonLabel="Register as Advocate (वकील के रूप में जुड़ें)"
+              onClick={() => onOpenLawyerAuth?.()}
+            />
           </div>
         </section>
 

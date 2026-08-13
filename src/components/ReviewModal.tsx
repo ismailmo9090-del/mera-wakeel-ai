@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Star, X, Check, Award, MessageSquare, User } from 'lucide-react';
-import { submitLawyerReview } from '../lib/supabase';
+import { submitLawyerReview, trackEvent } from '../lib/supabase';
 import { Logo } from './Logo';
 
 interface ReviewModalProps {
@@ -34,6 +34,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
 
     try {
       await submitLawyerReview(lawyerId, citizenId, rating, reviewText.trim());
+      trackEvent('review_submitted', { lawyer_id: lawyerId, rating, user_id: citizenId });
       setSubmitted(true);
       setTimeout(() => {
         if (onSuccess) onSuccess();

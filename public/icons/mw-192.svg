@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">
+  <rect width="192" height="192" rx="40" fill="#0F172A"/>
+  <g fill="#D98800">
+    <path d="M96 44l34 20-34 20-34-20z"/>
+    <path d="M62 68v20l34 20 34-20V68l-34 20z"/>
+  </g>
+  <text x="96" y="150" text-anchor="middle" font-family="Arial, sans-serif" font-size="34" font-weight="bold" fill="#FFFFFF">MW</text>
+</svg>

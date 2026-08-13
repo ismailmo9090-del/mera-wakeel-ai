@@ -64,6 +64,14 @@ export const Footer: React.FC<FooterProps> = ({ language, onTabChange, onOpenAut
                       <span>Advocate Dashboard</span>
                     </button>
                   </li>
+                  <li>
+                    <button
+                      onClick={() => onTabChange('help')}
+                      className="hover:text-[#D98800] transition-colors cursor-pointer"
+                    >
+                      Help Center (सहायता)
+                    </button>
+                  </li>
                 </ul>
               </div>
 
@@ -121,6 +129,30 @@ export const Footer: React.FC<FooterProps> = ({ language, onTabChange, onOpenAut
                       <ExternalLink className="w-3.5 h-3.5 text-[#D98800]" />
                     </button>
                   </li>
+                  <li>
+                    <button
+                      onClick={() => onTabChange('draft-documents')}
+                      className="hover:text-[#D98800] transition-colors cursor-pointer"
+                    >
+                      Draft Documents (दस्तावेज़)
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      onClick={() => onTabChange('free-legal-aid')}
+                      className="hover:text-[#D98800] transition-colors cursor-pointer"
+                    >
+                      Free Govt Legal Aid (NALSA)
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      onClick={() => onTabChange('help')}
+                      className="hover:text-[#D98800] transition-colors cursor-pointer"
+                    >
+                      Help Center (सहायता)
+                    </button>
+                  </li>
                 </ul>
               </div>
 
@@ -168,6 +200,14 @@ export const Footer: React.FC<FooterProps> = ({ language, onTabChange, onOpenAut
                     >
                       <span>Start Free Consultation</span>
                       <ExternalLink className="w-3.5 h-3.5 text-[#D98800]" />
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      onClick={() => onTabChange('help')}
+                      className="hover:text-[#D98800] transition-colors cursor-pointer"
+                    >
+                      Help Center (सहायता)
                     </button>
                   </li>
                 </ul>
@@ -252,7 +292,7 @@ export const Footer: React.FC<FooterProps> = ({ language, onTabChange, onOpenAut
             </button>
             <span>•</span>
             <button
-              onClick={() => onTabChange('privacy')}
+              onClick={() => onTabChange('terms')}
               className="hover:text-[#FFFFFF] transition-colors cursor-pointer"
             >
               Terms & Security
@@ -263,6 +303,13 @@ export const Footer: React.FC<FooterProps> = ({ language, onTabChange, onOpenAut
               className="hover:text-[#FFFFFF] transition-colors cursor-pointer"
             >
               Support & Settings
+            </button>
+            <span>•</span>
+            <button
+              onClick={() => onTabChange('help')}
+              className="hover:text-[#FFFFFF] transition-colors cursor-pointer"
+            >
+              Help Center
             </button>
           </div>
         </div>

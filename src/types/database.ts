@@ -1,4 +1,4 @@
-export type PreferredLanguage = 'hindi' | 'english' | 'hinglish';
+export type PreferredLanguage = 'hindi' | 'english' | 'hinglish' | 'tamil' | 'telugu' | 'marathi' | 'bengali' | 'kannada' | 'gujarati';
 export type UserType = 'citizen' | 'lawyer';
 export type CaseCategory = 'property' | 'tenant' | 'family' | 'consumer' | 'labour' | 'other';
 export type CaseStatus = 'ongoing' | 'assessed' | 'closed' | 'resolved' | 'lawyer_connected';
@@ -8,6 +8,8 @@ export type MessageType = 'text' | 'voice' | 'document_reference';
 export type DocumentType = 'stamp_paper' | 'will' | 'registry' | 'sale_deed' | 'power_of_attorney' | 'affidavit' | 'contract' | 'court_notice' | 'lease_agreement' | 'legal_notice' | 'other' | 'unknown';
 export type EvidencePriority = 'critical' | 'helpful' | 'optional';
 export type ConnectionStatus = 'requested' | 'accepted' | 'rejected' | 'completed';
+export type VerificationStatus = 'pending' | 'verified' | 'rejected';
+export type DeadlineType = 'hearing' | 'filing' | 'response';
 
 export interface Profile {
   id: string; // references auth.users(id)
@@ -27,6 +29,9 @@ export interface Lawyer {
   specialty: string[];
   years_experience: number;
   bar_council_number: string | null;
+  bar_council_state: string | null;
+  verification_status: VerificationStatus;
+  verified_at: string | null;
   is_verified: boolean;
   bio: string | null;
   consultation_fee_range: string | null;
@@ -39,6 +44,9 @@ export interface Lawyer {
 
   // Joined profile object if fetched with join
   profile?: Profile;
+
+  // Populated by the server directory endpoint (item 3) for trust badges.
+  review_count?: number;
 }
 
 export interface Case {
@@ -64,8 +72,12 @@ export interface Message {
   sender_type: MessageSenderType;
   content: string;
   message_type: MessageType;
+  language?: PreferredLanguageOverlay | null;
   created_at?: string;
 }
+
+/** Flexible language field overlay accepting both short codes and long codes. */
+export type PreferredLanguageOverlay = string;
 
 export interface Document {
   id: string;
@@ -132,4 +144,44 @@ export interface LegalKnowledgeBase {
   content: string;
   embedding?: number[];
   category: CaseCategory | null;
+}
+
+export interface CaseDeadline {
+  id: string;
+  case_id: string;
+  citizen_id: string;
+  deadline_type: DeadlineType;
+  due_date: string;
+  notes: string | null;
+  reminder_sent: boolean;
+  created_at?: string;
+
+  // Joined case for display
+  case?: Case;
+}
+
+export interface GeneratedDocument {
+  id: string;
+  citizen_id: string;
+  template_key: string;
+  title: string;
+  content: string | null;
+  file_url: string | null;
+  model: string | null;
+  created_at?: string;
+}
+
+export interface AnalyticsEvent {
+  id?: number;
+  event_name: string;
+  user_id?: string | null;
+  payload?: Record<string, any> | null;
+  created_at?: string;
+}
+
+export interface TrustStats {
+  total_consultations: number;
+  resolved_cases: number;
+  verified_lawyers: number;
+  avg_rating: number;
 }

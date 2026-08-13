@@ -1,8 +1,8 @@
-export type Language = 'hi' | 'en' | 'hinglish';
+export type Language = 'hi' | 'en' | 'hinglish' | 'ta' | 'te' | 'mr' | 'bn' | 'kn' | 'gu';
 
 export type UserRole = 'citizen' | 'lawyer';
 
-export type NavTab = 'home' | 'how-it-works' | 'for-lawyers' | 'my-cases' | 'chat' | 'lawyers' | 'documents' | 'settings' | 'auth' | 'privacy';
+export type NavTab = 'home' | 'how-it-works' | 'for-lawyers' | 'my-cases' | 'chat' | 'lawyers' | 'advocates' | 'documents' | 'settings' | 'auth' | 'privacy' | 'terms' | 'draft-documents' | 'free-legal-aid' | 'admin' | 'help';
 
 export interface TrustStat {
   label: string;

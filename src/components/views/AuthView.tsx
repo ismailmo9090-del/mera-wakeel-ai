@@ -3,6 +3,7 @@ import { Language, UserRole } from '../../types';
 import { CitySelect } from '../CitySelect';
 import { StateSelect } from '../StateSelect';
 import { Logo } from '../Logo';
+import { HowToDemo } from '../HowToDemo';
 import { APP_CONFIG } from '../../constants';
 import { supabase, fetchProfile } from '../../lib/supabase';
 import {
@@ -20,6 +21,8 @@ import {
   Briefcase,
   Award,
   BookOpen,
+  Play,
+  ChevronDown,
 } from 'lucide-react';
 
 interface AuthViewProps {
@@ -91,6 +94,10 @@ export const AuthView: React.FC<AuthViewProps> = ({
   // UI feedback states
   const [errorMessage, setErrorMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+
+  // HowTo animated tutorial panel (expands in the sidebar's empty space)
+  const [demoOpen, setDemoOpen] = useState(false);
 
   const handleToggleSpecialty = (spec: string) => {
     if (regSpecialties.includes(spec)) {
@@ -130,6 +137,10 @@ export const AuthView: React.FC<AuthViewProps> = ({
       }
       if (password !== confirmPassword) {
         setErrorMessage('Password aur Confirm Password match nahi kar rahe hain');
+        return;
+      }
+      if (!termsAccepted) {
+        setErrorMessage('Kripya Terms & Conditions (नियम और शर्तें) accept karein — iske bina account nahi ban sakta');
         return;
       }
       if (role === 'lawyer' && !barNumber.trim()) {
@@ -201,9 +212,15 @@ export const AuthView: React.FC<AuthViewProps> = ({
 
           if (data?.user) {
             const profile = await fetchProfile(data.user.id);
+            const metaName = data.user.user_metadata?.full_name || '';
+            const mergedProfile = profile
+              ? { ...profile, full_name: profile.full_name || metaName || null }
+              : metaName
+              ? { full_name: metaName, user_type: 'citizen' }
+              : null;
             const detectedRole: UserRole = profile?.user_type === 'lawyer' ? 'lawyer' : 'citizen';
             setIsSubmitting(false);
-            onLoginSuccess(detectedRole, data.user.email || cleanEmail, data.user.id, profile);
+            onLoginSuccess(detectedRole, data.user.email || cleanEmail, data.user.id, mergedProfile);
             return;
           }
         }
@@ -248,6 +265,24 @@ export const AuthView: React.FC<AuthViewProps> = ({
               {role === 'lawyer' ? 'Advocate Legal Portal (वकील)' : 'Citizen Kanooni Portal (नागरिक)'}
             </span>
           </div>
+
+          {/* HowTo tutorial toggle — label swaps with active tab (Login/Register) */}
+          <button
+            type="button"
+            onClick={() => setDemoOpen((o) => !o)}
+            aria-expanded={demoOpen}
+            className={`w-full inline-flex items-center justify-between gap-2 px-3.5 py-2 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+              demoOpen
+                ? 'bg-[#D4A017]/20 border-[#D4A017]/60 text-[#FFD766]'
+                : 'bg-[#FFFFFF]/10 border-[#FFFFFF]/20 text-[#E2E8F0] hover:bg-[#FFFFFF]/20 hover:border-[#D4A017]/40'
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <Play className="w-3.5 h-3.5 text-[#D4A017]" />
+              <span>{mode === 'login' ? 'How to Login? (देखें)' : 'How to Signup? (देखें)'}</span>
+            </span>
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${demoOpen ? 'rotate-180' : ''}`} />
+          </button>
 
           <div className="space-y-2">
             <h1 className="text-lg sm:text-2xl lg:text-3xl font-extrabold text-[#FFFFFF] leading-tight">
@@ -295,6 +330,15 @@ export const AuthView: React.FC<AuthViewProps> = ({
               </>
             )}
           </div>
+        </div>
+
+        {/* HowTo animated tutorial — expands in the sidebar's empty space (below checklist, above footer) */}
+        <div className="z-10 w-full px-5 sm:px-8 py-4 min-h-0 shrink-0">
+          <HowToDemo
+            type={mode}
+            userType={role === 'lawyer' ? 'advocate' : 'citizen'}
+            open={demoOpen}
+          />
         </div>
 
         <div className="hidden lg:flex pt-6 mt-6 border-t border-[#FFFFFF]/15 z-10 items-center justify-between">
@@ -621,6 +665,32 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     />
                   </div>
                 </div>
+              )}
+
+              {/* TERMS ACCEPTANCE (Sign Up only) */}
+              {mode === 'signup' && (
+                <label className="flex items-start gap-2.5 cursor-pointer select-none bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-3">
+                  <input
+                    type="checkbox"
+                    required
+                    checked={termsAccepted}
+                    onChange={(e) => setTermsAccepted(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 accent-[#0F1D38] cursor-pointer shrink-0"
+                  />
+                  <span className="text-xs text-[#334155] leading-relaxed">
+                    {role === 'lawyer'
+                      ? 'Main Mera Wakeel AI ke Terms & Conditions aur Advocate (वकील) के विशेष नियमों से सहमत हूँ |'
+                      : 'Main Mera Wakeel AI ke Terms & Conditions (नियम और शर्तें) से सहमत हूँ |'}{' '}
+                    <a
+                      href="/terms"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[#D98800] font-bold underline hover:text-[#B45309]"
+                    >
+                      Terms & Conditions पढ़ें →
+                    </a>
+                  </span>
+                </label>
               )}
 
               {/* SUBMIT */}

@@ -1,32 +1,47 @@
-import React from 'react';
-import { ShieldCheck, MapPin, Star, Clock } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { ShieldCheck, MapPin, Star, Clock, Scale, Briefcase } from 'lucide-react';
 import { motion } from 'motion/react';
+import { fetchTrustStats } from '../lib/supabase';
 
+/**
+ * Aggregate trust stats banner (item 3).
+ * Real counts pulled from the DB — never hardcoded numbers.
+ */
 export const StatsBanner: React.FC = () => {
+  const [statsData, setStatsData] = useState<{ total_consultations: number; resolved_cases: number; verified_lawyers: number; avg_rating: number } | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    fetchTrustStats().then((s) => {
+      if (mounted) setStatsData(s);
+    }).catch(() => {});
+    return () => { mounted = false; };
+  }, []);
+
   const stats = [
     {
       icon: ShieldCheck,
-      value: '500+',
+      value: statsData ? `${statsData.verified_lawyers}` : '—',
       label: 'Verified Advocates',
       sublabel: 'Bar Council Registered Network',
     },
     {
-      icon: MapPin,
-      value: '28 States',
-      label: 'Court Coverage',
-      sublabel: 'High Courts & District Courts',
+      icon: Briefcase,
+      value: statsData ? `${statsData.total_consultations}` : '—',
+      label: 'Consultations',
+      sublabel: 'Real AI Case Consultations',
+    },
+    {
+      icon: Scale,
+      value: statsData ? `${statsData.resolved_cases}` : '—',
+      label: 'Resolved Cases',
+      sublabel: 'Cases Resolved via Platform',
     },
     {
       icon: Star,
-      value: '100% Secure',
-      label: 'DPDP Compliant',
-      sublabel: 'Encrypted Legal Vault',
-    },
-    {
-      icon: Clock,
-      value: '24/7 Instant',
-      label: 'AI Legal Guidance',
-      sublabel: 'BNS, BNSS & BSA Analysis',
+      value: statsData ? `${statsData.avg_rating}★` : '—',
+      label: 'Average Advocate Rating',
+      sublabel: 'Verified Client Reviews',
     },
   ];
 
@@ -75,4 +90,3 @@ export const StatsBanner: React.FC = () => {
     </div>
   );
 };
-

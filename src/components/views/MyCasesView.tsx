@@ -38,6 +38,7 @@ import { ExportModal, ExportCaseData } from '../ExportModal';
 import { fetchUserCases, createCase, fetchCaseDocuments, updateCaseStatus } from '../../lib/supabase';
 import { Case } from '../../types/database';
 import { Logo } from '../Logo';
+import { DeadlineTimeline } from '../DeadlineTimeline';
 
 interface MyCasesViewProps {
   language: Language;
@@ -362,7 +363,7 @@ export const MyCasesView: React.FC<MyCasesViewProps> = ({
             <div className="flex items-center gap-2 bg-[#DCFCE7] border border-[#86EFAC] px-3.5 py-1.5 rounded-xl text-xs font-extrabold text-[#0F172A] shadow-2xs">
               <span className="w-2.5 h-2.5 rounded-full bg-[#16A34A] animate-pulse" />
               <span className="truncate max-w-[150px]">
-                {currentUser?.name || currentUser?.email?.split('@')[0].toUpperCase() || 'Citizen User'}
+                {currentUser?.name || currentUser?.email?.split('@')[0] || 'Citizen'}
               </span>
               <span className="text-[10px] bg-[#16A34A] text-[#FFFFFF] px-1.5 py-0.5 rounded-md font-extrabold">
                 Logged In
@@ -509,7 +510,14 @@ export const MyCasesView: React.FC<MyCasesViewProps> = ({
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <>
+                <DeadlineTimeline
+                  language={language}
+                  citizenId={userId || currentUser?.userId}
+                  caseId={userCases[0]?.id || null}
+                  title="Court Deadlines"
+                />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {userCases.map((c) => (
                   <div key={c.id} className="p-5 bg-[#FFFFFF] border border-[#E2E8F0] rounded-2xl shadow-2xs space-y-3">
                     <div className="flex items-center justify-between">
@@ -554,7 +562,8 @@ export const MyCasesView: React.FC<MyCasesViewProps> = ({
                     </div>
                   </div>
                 ))}
-              </div>
+                </div>
+              </>
             )}
           </div>
         ) : (

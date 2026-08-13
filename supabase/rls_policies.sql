@@ -53,10 +53,50 @@ begin
   end loop;
 end $$;
 
--- STEP 3: Grants (idempotent — ensures anon + authenticated roles can use tables)
+-- STEP 3: Least-privilege grants (idempotent).
+-- We grant ONLY the operations each RLS policy actually requires, instead of a
+-- blanket "grant all". Row-level policies remain the real gate-keeper; these
+-- grants merely enable the minimum table privileges for each role.
+-- The Node server uses SUPABASE_SERVICE_ROLE_KEY (bypasses RLS) for all
+-- /api/db/*, /api/documents, /api/analytics, and /api/webhooks/* writes, so the
+-- anon/authenticated roles below mirror only the direct client fallbacks.
 grant usage on schema public to anon, authenticated;
-grant all on all tables in schema public to anon, authenticated;
-grant all on all sequences in schema public to anon, authenticated;
+
+-- ANON: public read-only surfaces only
+grant select on lawyers to anon;
+grant select on reviews to anon;
+grant select on legal_knowledge_base to anon;
+
+-- AUTHENTICATED: citizen + lawyer client operations
+grant select on profiles to authenticated;
+grant insert, update on profiles to authenticated;
+
+grant select, insert, update on lawyers to authenticated;
+
+grant select, insert, update on cases to authenticated;
+
+grant select, insert on messages to authenticated;
+
+grant select, insert, update, delete on documents to authenticated;
+grant select, insert, update, delete on case_evidence to authenticated;
+
+grant select, insert, update on lawyer_connections to authenticated;
+
+grant select, insert on reviews to authenticated;
+
+grant select, insert, delete on legal_knowledge_base to authenticated;
+
+grant select, insert, update on case_facts to authenticated;
+grant select, insert, update on profile_facts to authenticated;
+
+grant select, insert on direct_messages to authenticated;
+
+grant select, insert, update, delete on case_deadlines to authenticated;
+grant select, insert on generated_documents to authenticated;
+
+-- whatsapp_sessions and analytics_events are written ONLY by the server via the
+-- service role (which bypasses RLS). Neither anon nor authenticated receives any
+-- grant on them, so clients can never touch them directly.
 
 -- =====================================================
 -- PROFILES

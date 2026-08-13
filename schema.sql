@@ -15,12 +15,16 @@ create table if not exists profiles (
 );
 
 -- 2. Lawyers Table
+-- KYC columns: bar_council_state + verification_status (pending/verified/rejected) + verified_at.
 create table if not exists lawyers (
   id uuid primary key default gen_random_uuid(),
   profile_id uuid not null references profiles(id) on delete cascade,
   specialty text[] default '{}',
   years_experience int default 0,
   bar_council_number text,
+  bar_council_state text,
+  verification_status text default 'pending' check (verification_status in ('pending', 'verified', 'rejected')),
+  verified_at timestamptz,
   is_verified boolean default false,
   bio text,
   consultation_fee_range text,
@@ -48,12 +52,14 @@ create table if not exists cases (
 );
 
 -- 4. Messages Table
+-- language column stores the auto-detected language code (hi/en/hinglish/ta/te/mr/bn/kn/gu) per message for analytics.
 create table if not exists messages (
   id uuid primary key default gen_random_uuid(),
   case_id uuid not null references cases(id) on delete cascade,
   sender_type text not null check (sender_type in ('user', 'ai')),
   content text not null,
   message_type text default 'text' check (message_type in ('text', 'voice', 'document_reference')),
+  language text default 'hi',
   created_at timestamptz default now()
 );
 
@@ -138,6 +144,49 @@ create table if not exists direct_messages (
   sent_at timestamptz default now()
 );
 
+-- 13. Case Deadlines Table (Deadline / court-date tracker, item 5)
+create table if not exists case_deadlines (
+  id uuid primary key default gen_random_uuid(),
+  case_id uuid not null references cases(id) on delete cascade,
+  citizen_id uuid not null references profiles(id) on delete cascade,
+  deadline_type text not null check (deadline_type in ('hearing', 'filing', 'response')),
+  due_date timestamptz not null,
+  notes text,
+  reminder_sent boolean default false,
+  created_at timestamptz default now()
+);
+
+-- 14. Generated Documents Table (item 4 - AI drafted legal documents)
+create table if not exists generated_documents (
+  id uuid primary key default gen_random_uuid(),
+  citizen_id uuid not null references profiles(id) on delete cascade,
+  template_key text not null,
+  title text not null,
+  content text,
+  file_url text,
+  model text,
+  created_at timestamptz default now()
+);
+
+-- 15. WhatsApp Sessions Table (item 6 - map phone -> citizen/guest session)
+create table if not exists whatsapp_sessions (
+  id uuid primary key default gen_random_uuid(),
+  phone text not null unique,
+  citizen_id uuid references profiles(id) on delete set null,
+  is_guest boolean default true,
+  last_message text,
+  updated_at timestamptz default now()
+);
+
+-- 16. Analytics Events Table (item 10 - lightweight product analytics)
+create table if not exists analytics_events (
+  id bigint generated always as identity primary key,
+  event_name text not null,
+  user_id uuid,
+  payload jsonb,
+  created_at timestamptz default now()
+);
+
 -- Indexes on Foreign Key columns for performance
 create index if not exists idx_lawyers_profile_id on lawyers(profile_id);
 create index if not exists idx_cases_citizen_id on cases(citizen_id);
@@ -154,6 +203,12 @@ create index if not exists idx_case_facts_case_id on case_facts(case_id);
 create index if not exists idx_profile_facts_profile_id on profile_facts(profile_id);
 create index if not exists idx_direct_messages_connection_id on direct_messages(connection_id);
 create index if not exists idx_direct_messages_sent_at on direct_messages(sent_at);
+create index if not exists idx_case_deadlines_case_id on case_deadlines(case_id);
+create index if not exists idx_case_deadlines_citizen_id on case_deadlines(citizen_id);
+create index if not exists idx_case_deadlines_due_date on case_deadlines(due_date);
+create index if not exists idx_generated_documents_citizen_id on generated_documents(citizen_id);
+create index if not exists idx_analytics_events_name on analytics_events(event_name);
+create index if not exists idx_analytics_events_created_at on analytics_events(created_at);
 
 -- Enable Row Level Security (RLS) on all tables for production data protection
 alter table profiles enable row level security;
@@ -168,6 +223,10 @@ alter table legal_knowledge_base enable row level security;
 alter table case_facts enable row level security;
 alter table profile_facts enable row level security;
 alter table direct_messages enable row level security;
+alter table case_deadlines enable row level security;
+alter table generated_documents enable row level security;
+alter table whatsapp_sessions enable row level security;
+alter table analytics_events enable row level security;
 
 -- RLS Policies
 
@@ -284,8 +343,16 @@ create policy "Lawyer connections insert" on lawyer_connections
 create policy "Anyone can select reviews" on reviews
   for select using (true);
 
+-- Only a citizen who had a completed (accepted) consultation with the lawyer may review.
 create policy "Citizens can insert reviews" on reviews
-  for insert with check (auth.uid() = citizen_id);
+  for insert with check (
+    auth.uid() = citizen_id and exists (
+      select 1 from lawyer_connections
+      where lawyer_connections.citizen_id = reviews.citizen_id
+      and lawyer_connections.lawyer_id = reviews.lawyer_id
+      and lawyer_connections.status in ('accepted', 'completed')
+    )
+  );
 
 -- legal_knowledge_base policies
 create policy "Anyone can select legal knowledge base" on legal_knowledge_base
@@ -335,5 +402,68 @@ create policy "Direct messages select" on direct_messages
 
 create policy "Direct messages insert" on direct_messages
   for insert with check (true);
+
+-- case_deadlines policies (owner-only)
+create policy "Case deadlines select" on case_deadlines
+  for select using (auth.uid() = citizen_id);
+
+create policy "Case deadlines insert" on case_deadlines
+  for insert with check (auth.uid() = citizen_id);
+
+create policy "Case deadlines update" on case_deadlines
+  for update using (auth.uid() = citizen_id);
+
+create policy "Case deadlines delete" on case_deadlines
+  for delete using (auth.uid() = citizen_id);
+
+-- generated_documents policies (owner-only)
+create policy "Generated documents select" on generated_documents
+  for select using (auth.uid() = citizen_id);
+
+create policy "Generated documents insert" on generated_documents
+  for insert with check (auth.uid() = citizen_id);
+
+-- whatsapp_sessions policies (admin / service-role only via server proxies; anon cannot read or write)
+create policy "No anon select on whatsapp_sessions" on whatsapp_sessions
+  for select using (false);
+
+create policy "No anon insert on whatsapp_sessions" on whatsapp_sessions
+  for insert with check (false);
+
+-- analytics_events policies (server proxy only; anon cannot read or write directly)
+create policy "No anon select on analytics_events" on analytics_events
+  for select using (false);
+
+create policy "No anon insert on analytics_events" on analytics_events
+  for insert with check (false);
+
+-- Least-privilege grants: only the operations each RLS policy requires, instead
+-- of a blanket "grant all". Row-level policies remain the real gate-keeper; the
+-- server uses SUPABASE_SERVICE_ROLE_KEY (bypasses RLS) for /api/db/* writes, so
+-- direct anon/authenticated grants mirror only the client fallbacks.
+grant usage on schema public to anon, authenticated;
+
+grant select on lawyers to anon;
+grant select on reviews to anon;
+grant select on legal_knowledge_base to anon;
+
+grant select on profiles to authenticated;
+grant insert, update on profiles to authenticated;
+grant select, insert, update on lawyers to authenticated;
+grant select, insert, update on cases to authenticated;
+grant select, insert on messages to authenticated;
+grant select, insert, update, delete on documents to authenticated;
+grant select, insert, update, delete on case_evidence to authenticated;
+grant select, insert, update on lawyer_connections to authenticated;
+grant select, insert on reviews to authenticated;
+grant select, insert, delete on legal_knowledge_base to authenticated;
+grant select, insert, update on case_facts to authenticated;
+grant select, insert, update on profile_facts to authenticated;
+grant select, insert on direct_messages to authenticated;
+grant select, insert, update, delete on case_deadlines to authenticated;
+grant select, insert on generated_documents to authenticated;
+
+-- whatsapp_sessions and analytics_events are written only via the service role;
+-- neither anon nor authenticated receives any grant on them.
 
 

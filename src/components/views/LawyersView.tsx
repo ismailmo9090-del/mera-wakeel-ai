@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Language, UserRole } from '../../types';
 import { Lawyer, Case, Review } from '../../types/database';
-import { fetchLawyersDirectory, createLawyerConnection, fetchUserCases, createCase, updateCaseStatus, generateUUID, fetchLawyerConnectionsForCitizen, fetchLawyerReviews } from '../../lib/supabase';
+import { fetchLawyersDirectory, createLawyerConnection, fetchUserCases, createCase, updateCaseStatus, generateUUID, fetchLawyerConnectionsForCitizen, fetchLawyerReviews, trackEvent } from '../../lib/supabase';
 import { DirectMessagePanel } from '../DirectMessagePanel';
 import { ReviewModal } from '../ReviewModal';
 import { Logo } from '../Logo';
@@ -265,6 +265,7 @@ export const LawyersView: React.FC<LawyersViewProps> = ({
 
     try {
       await createLawyerConnection(citizenId, lawyerId, caseIdToUse);
+      trackEvent('lawyer_connection_requested', { lawyer_id: lawyerId, case_id: caseIdToUse, user_id: citizenId });
     } catch (e) {
       console.warn('Error creating lawyer connection:', e);
     }
@@ -1254,9 +1255,17 @@ export const LawyersView: React.FC<LawyersViewProps> = ({
                           alt={name}
                           className="w-16 h-16 rounded-xl object-cover border border-[#CBD5E1] bg-[#F1F5F9]"
                         />
-                        {lawyer.is_verified && (
-                          <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-[#2563EB] text-[#FFFFFF] text-[10px] font-bold flex items-center justify-center border border-[#FFFFFF]">
+                        {lawyer.verification_status === 'verified' ? (
+                          <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-[#2563EB] text-[#FFFFFF] text-[10px] font-bold flex items-center justify-center border border-[#FFFFFF]" title="Verified Advocate">
                             ✓
+                          </span>
+                        ) : lawyer.verification_status === 'rejected' ? (
+                          <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-[#DC2626] text-[#FFFFFF] text-[10px] font-bold flex items-center justify-center border border-[#FFFFFF]" title="Verification rejected">
+                            ✕
+                          </span>
+                        ) : (
+                          <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-[#F59E0B] text-[#FFFFFF] text-[10px] font-bold flex items-center justify-center border border-[#FFFFFF]" title="Verification pending">
+                            …
                           </span>
                         )}
                       </div>
@@ -1298,7 +1307,7 @@ export const LawyersView: React.FC<LawyersViewProps> = ({
                       </div>
                       <div className="bg-[#F8FAFC] p-2 rounded-lg text-center">
                         <p className="text-[10px] text-[#64748B]">Rating</p>
-                        <p className="font-extrabold text-[#D97706]">{lawyer.rating_avg || 4.9} ★</p>
+                        <p className="font-extrabold text-[#D97706]">{lawyer.rating_avg || 4.9} ★ <span className="text-[#94A3B8] font-semibold text-[10px]">({lawyer.review_count || 0})</span></p>
                       </div>
                     </div>
 

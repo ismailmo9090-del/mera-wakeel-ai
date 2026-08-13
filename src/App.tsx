@@ -6,8 +6,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Language, NavTab, UserRole } from './types';
 import { Navbar } from './components/Navbar';
-import { Hero } from './components/Hero';
-import { HowItWorks } from './components/HowItWorks';
+import { HeroBanner } from './components/HeroBanner';
+import { HowItWorksSection } from './components/HowItWorksSection';
 import { StatsBanner } from './components/StatsBanner';
 import { Footer } from './components/Footer';
 import { AuthModal } from './components/AuthModal';
@@ -15,11 +15,17 @@ import { AuthView } from './components/views/AuthView';
 import { ChatView } from './components/views/ChatView';
 import { DocumentsView } from './components/views/DocumentsView';
 import { LawyersView } from './components/views/LawyersView';
+import { AdvocateDirectoryView } from './components/views/AdvocateDirectoryView';
 import { SettingsView } from './components/views/SettingsView';
 import { ForLawyersView } from './components/views/ForLawyersView';
 import { MyCasesView } from './components/views/MyCasesView';
 import { PrivacyPolicyView } from './components/views/PrivacyPolicyView';
-import { supabase, fetchProfile, createCase, fetchUserCases } from './lib/supabase';
+import { TermsConditionsView } from './components/views/TermsConditionsView';
+import { DraftDocumentView } from './components/views/DraftDocumentView';
+import { FreeLegalAidView } from './components/views/FreeLegalAidView';
+import { AdminDashboardView } from './components/views/AdminDashboardView';
+import { HelpView } from './components/views/HelpView';
+import { supabase, fetchProfile, createOrUpdateProfile, resolveDisplayName, createCase, fetchUserCases } from './lib/supabase';
 import { motion, AnimatePresence } from 'motion/react';
 
 // ---------------------------------------------------------------------------
@@ -34,14 +40,36 @@ const TAB_PATHS: Record<NavTab, string> = {
   'my-cases': '/my-cases',
   chat: '/chat',
   lawyers: '/lawyers',
+  advocates: '/advocates',
   documents: '/documents',
   settings: '/settings',
   privacy: '/privacy',
+  terms: '/terms',
+  'draft-documents': '/draft-documents',
+  'free-legal-aid': '/free-legal-aid',
+  admin: '/admin',
+  help: '/help',
 };
 
 function tabFromPath(path: string): NavTab {
   const match = (Object.entries(TAB_PATHS) as Array<[NavTab, string]>).find(([, p]) => p === path);
   return match ? match[0] : 'home';
+}
+
+// Maps the stored profile.preferred_language value (e.g. 'hindi', 'tamil') to the app Language code.
+function languageFromProfile(lang?: string | null): Language {
+  switch (lang?.toLowerCase()) {
+    case 'english': return 'en';
+    case 'hinglish': return 'hinglish';
+    case 'tamil': return 'ta';
+    case 'telugu': return 'te';
+    case 'marathi': return 'mr';
+    case 'bengali': return 'bn';
+    case 'kannada': return 'kn';
+    case 'gujarati': return 'gu';
+    case 'hindi':
+    default: return 'hi';
+  }
 }
 
 export default function App() {
@@ -60,7 +88,15 @@ export default function App() {
   } | null>(null);
   const [lawyerDirectoryCategory, setLawyerDirectoryCategory] = useState<string | null>(null);
 
-  const PROTECTED_TABS: NavTab[] = ['my-cases', 'chat', 'documents', 'settings'];
+  const PROTECTED_TABS: NavTab[] = [
+    'my-cases',
+    'chat',
+    'documents',
+    'settings',
+    'draft-documents',
+    'lawyers',
+    'admin',
+  ];
 
   // Keep up-to-date refs so the popstate listener (registered once) can read
   // the current auth state and tab without re-subscribing.
@@ -119,10 +155,16 @@ export default function App() {
       'my-cases': 'My Cases — Mera Wakeel AI',
       'chat': 'AI Legal Consultation — Mera Wakeel AI',
       'lawyers': 'Find Verified Lawyers — Mera Wakeel AI',
+      'advocates': 'Find & Contact Verified Advocates — Mera Wakeel AI',
       'documents': 'Legal Document Reader — Mera Wakeel AI',
       'settings': 'Settings & Privacy — Mera Wakeel AI',
       'privacy': 'Privacy Policy — Mera Wakeel AI',
+      'terms': 'Terms & Conditions — Mera Wakeel AI',
       'auth': 'Login & Register — Mera Wakeel AI',
+      'draft-documents': 'AI Document Drafting — Mera Wakeel AI',
+      'free-legal-aid': 'Free Government Legal Aid — Mera Wakeel AI',
+      'admin': 'Admin Dashboard — Mera Wakeel AI',
+      'help': 'Help Center — Mera Wakeel AI',
     };
     document.title = titleMap[currentTab] || 'Mera Wakeel AI — Apna Personal Legal Guide';
   }, [currentTab]);
@@ -173,17 +215,30 @@ export default function App() {
         if (session?.user && isMounted) {
           const profile = await fetchProfile(session.user.id);
           const role: UserRole = profile?.user_type === 'lawyer' ? 'lawyer' : 'citizen';
+          const name = resolveDisplayName({
+            profile,
+            metadata: session.user.user_metadata || null,
+            email: session.user.email,
+            phone: profile?.phone,
+            role,
+          });
           setCurrentUser({
             userId: session.user.id,
             email: session.user.email || '',
             role,
-            name: profile?.full_name || session.user.email?.split('@')[0],
+            name,
           });
 
+          // Best-effort: persist the real name into the DB profile when the
+          // profile row is empty but the auth metadata still has it, so the
+          // navbar keeps showing the user's name after every refresh.
+          const metaName = session.user.user_metadata?.full_name || session.user.user_metadata?.name || '';
+          if (profile && !profile.full_name && metaName) {
+            createOrUpdateProfile({ ...profile, full_name: String(metaName).trim() }).catch(() => {});
+          }
+
           if (profile?.preferred_language) {
-            if (profile.preferred_language === 'english') setLanguage('en');
-            else if (profile.preferred_language === 'hinglish') setLanguage('hinglish');
-            else setLanguage('hi');
+            setLanguage(languageFromProfile(profile.preferred_language));
           }
         }
       } catch (err) {
@@ -198,11 +253,18 @@ export default function App() {
         if (session?.user && isMounted) {
           const profile = await fetchProfile(session.user.id);
           const role: UserRole = profile?.user_type === 'lawyer' ? 'lawyer' : 'citizen';
+          const name = resolveDisplayName({
+            profile,
+            metadata: session.user.user_metadata || null,
+            email: session.user.email,
+            phone: profile?.phone,
+            role,
+          });
           setCurrentUser({
             userId: session.user.id,
             email: session.user.email || '',
             role,
-            name: profile?.full_name || session.user.email?.split('@')[0],
+            name,
           });
         } else if (event === 'SIGNED_OUT' && isMounted) {
           setCurrentUser(null);
@@ -215,6 +277,25 @@ export default function App() {
       };
     }
   }, []);
+
+  // Direct URL guard: if a protected page is loaded while logged-out
+  // (e.g. someone opens /chat directly), force them to the login page.
+  useEffect(() => {
+    if (!currentUser && PROTECTED_TABS.includes(currentTab)) {
+      setPendingRedirectTab(currentTab);
+      setAuthInitialRole('citizen');
+      setCurrentTab('auth');
+      window.history.replaceState({}, '', TAB_PATHS.auth);
+      return;
+    }
+    // Logged-in users hitting the login page are sent to their dashboard.
+    if (currentUser && currentTab === 'auth') {
+      const target = pendingRedirectTab || (currentUser.role === 'lawyer' ? 'for-lawyers' : 'my-cases');
+      setPendingRedirectTab(null);
+      setCurrentTab(target);
+      window.history.replaceState({}, '', TAB_PATHS[target]);
+    }
+  }, [currentUser, currentTab]);
 
   const handleTabChange = (tab: NavTab) => {
     // Logged-in users don't need the login page — go to their dashboard.
@@ -235,7 +316,7 @@ export default function App() {
     // Role-based route guard:
     if (currentUser?.role === 'lawyer') {
       // Advocates cannot access citizen-only views
-      const citizenOnlyTabs: NavTab[] = ['my-cases', 'chat', 'documents', 'lawyers'];
+      const citizenOnlyTabs: NavTab[] = ['my-cases', 'chat', 'documents', 'lawyers', 'advocates'];
       if (citizenOnlyTabs.includes(tab)) {
         setCurrentTab('for-lawyers');
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -261,17 +342,22 @@ export default function App() {
 
   const handleLoginSuccess = (role: UserRole, email: string, userId?: string, profile?: any) => {
     const finalUserId = userId || `user_${Date.now()}`;
+    const name = resolveDisplayName({
+      profile,
+      metadata: profile?.user_metadata || null,
+      email,
+      phone: profile?.phone,
+      role,
+    });
     setCurrentUser({
       userId: finalUserId,
       email,
       role,
-      name: profile?.full_name || email.split('@')[0],
+      name,
     });
 
     if (profile?.preferred_language) {
-      if (profile.preferred_language === 'english') setLanguage('en');
-      else if (profile.preferred_language === 'hinglish') setLanguage('hinglish');
-      else setLanguage('hi');
+      setLanguage(languageFromProfile(profile.preferred_language));
     }
 
     if (pendingRedirectTab) {
@@ -329,7 +415,7 @@ export default function App() {
   }, []);
 
   // Pages where Footer is required
-  const SHOW_FOOTER_PAGES: NavTab[] = ['home', 'how-it-works', 'documents', 'settings', 'privacy', 'lawyers'];
+  const SHOW_FOOTER_PAGES: NavTab[] = ['home', 'how-it-works', 'documents', 'settings', 'privacy', 'terms', 'lawyers', 'advocates', 'help', 'draft-documents', 'free-legal-aid'];
 
   return (
     <div className="min-h-screen flex flex-col bg-[#FFFFFF] text-[#111827] font-sans">
@@ -410,16 +496,15 @@ export default function App() {
             {currentTab === 'home' || currentTab === 'how-it-works' ? (
               <>
                 {/* 1. Hero Section */}
-                <Hero
+                <HeroBanner
                   language={language}
                   onStartConsultation={() => handleTabChange('chat')}
                   onNavigate={handleTabChange}
                 />
 
                 {/* 2. 3-Step How It Works Section */}
-                <HowItWorks
-                  language={language}
-                  onStartConsultation={() => handleTabChange('chat')}
+                <HowItWorksSection
+                  onStart={() => handleTabChange('chat')}
                 />
 
                 {/* 3. Dark Navy Stats Banner */}
@@ -490,6 +575,12 @@ export default function App() {
                 }}
                 onRequireAuth={() => handleOpenAuth('citizen')}
               />
+            ) : currentTab === 'advocates' ? (
+              <AdvocateDirectoryView
+                currentUser={currentUser}
+                onBackToHome={() => handleTabChange('home')}
+                onRequireAuth={() => handleOpenAuth('citizen')}
+              />
             ) : currentTab === 'settings' ? (
               <SettingsView
                 language={language}
@@ -499,6 +590,34 @@ export default function App() {
               />
             ) : currentTab === 'privacy' ? (
               <PrivacyPolicyView
+                language={language}
+                onBackToHome={() => handleTabChange('home')}
+                onNavigate={handleTabChange}
+              />
+            ) : currentTab === 'terms' ? (
+              <TermsConditionsView
+                language={language}
+                onBackToHome={() => handleTabChange('home')}
+                onNavigate={handleTabChange}
+              />
+            ) : currentTab === 'draft-documents' ? (
+              <DraftDocumentView
+                language={language}
+                currentUser={currentUser}
+                onBackToHome={() => handleTabChange('home')}
+              />
+            ) : currentTab === 'free-legal-aid' ? (
+              <FreeLegalAidView
+                language={language}
+                onBackToHome={() => handleTabChange('home')}
+              />
+            ) : currentTab === 'admin' ? (
+              <AdminDashboardView
+                language={language}
+                onBackToHome={() => handleTabChange('home')}
+              />
+            ) : currentTab === 'help' ? (
+              <HelpView
                 language={language}
                 onBackToHome={() => handleTabChange('home')}
                 onNavigate={handleTabChange}

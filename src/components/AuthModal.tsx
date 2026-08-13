@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { UserRole, Language } from '../types';
-import { supabase, fetchProfile, createOrUpdateProfile } from '../lib/supabase';
+import { supabase, fetchProfile, createOrUpdateProfile, trackEvent } from '../lib/supabase';
 import { CitySelect } from './CitySelect';
 import { StateSelect } from './StateSelect';
 import { Logo } from './Logo';
@@ -47,6 +47,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [errorMessage, setErrorMessage] = useState('');
   const [lawyerNotice, setLawyerNotice] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
 
   if (!isOpen) return null;
 
@@ -83,6 +84,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         setErrorMessage('Password kam se kam 6 characters ka hona chahiye');
         return;
       }
+      if (!termsAccepted) {
+        setErrorMessage('Kripya Terms & Conditions (नियम और शर्तें) accept karein — iske bina account nahi ban sakta');
+        return;
+      }
     }
 
     setSubmitted(true);
@@ -114,6 +119,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         }
 
         const realUserId = data.user?.id || `usr_${Date.now()}`;
+        trackEvent('user_signed_up', { user_id: realUserId, user_type: 'citizen', state, city });
 
         // Auto sign in on client side
         if (supabase) {
@@ -145,6 +151,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
           if (data?.user) {
             const profile = await fetchProfile(data.user.id);
+            const metaName = data.user.user_metadata?.full_name || '';
+            const mergedProfile = profile
+              ? { ...profile, full_name: profile.full_name || metaName || null }
+              : metaName
+              ? { full_name: metaName, user_type: 'citizen' }
+              : null;
             
             if (profile?.user_type === 'lawyer') {
               setLawyerNotice(true);
@@ -154,7 +166,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
             onClose();
             setSubmitted(false);
-            onLoginSuccess('citizen', data.user.email || cleanEmail, data.user.id, profile);
+            onLoginSuccess('citizen', data.user.email || cleanEmail, data.user.id, mergedProfile);
             return;
           }
         }
@@ -346,6 +358,30 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 />
               </div>
             </div>
+          )}
+
+          {/* Terms Acceptance (Sign Up only) */}
+          {isSignUp && (
+            <label className="flex items-start gap-2.5 cursor-pointer select-none bg-[#F8FAFC] border border-[#E5E7EB] rounded-xl p-3">
+              <input
+                type="checkbox"
+                required
+                checked={termsAccepted}
+                onChange={(e) => setTermsAccepted(e.target.checked)}
+                className="mt-0.5 w-4 h-4 accent-[#1F3864] cursor-pointer shrink-0"
+              />
+              <span className="text-xs text-[#374151] leading-relaxed">
+                Main Mera Wakeel AI ke Terms &amp; Conditions (नियम और शर्तें) se sahamat hoon.{' '}
+                <a
+                  href="/terms"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[#1F3864] font-bold underline hover:text-[#D4A017]"
+                >
+                  Terms &amp; Conditions padhein →
+                </a>
+              </span>
+            </label>
           )}
 
           {/* Submit CTA */}

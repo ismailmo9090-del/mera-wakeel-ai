@@ -1,0 +1,46 @@
+{
+  "name": "Mera Wakeel AI — Apna Personal Legal Guide",
+  "short_name": "Mera Wakeel",
+  "description": "Free AI-powered legal guidance in 9 Indian languages — property, family, consumer, labour and criminal law support.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0F172A",
+  "theme_color": "#D98800",
+  "orientation": "portrait-primary",
+  "lang": "hi",
+  "categories": ["productivity", "finance", "business"],
+  "icons": [
+    {
+      "src": "/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Start AI Legal Chat",
+      "short_name": "AI Chat",
+      "url": "/?tab=chat",
+      "icons": [{ "src": "/android-chrome-192x192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Draft a Legal Document",
+      "short_name": "Draft Docs",
+      "url": "/?tab=draft-documents",
+      "icons": [{ "src": "/android-chrome-192x192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ]
+}
