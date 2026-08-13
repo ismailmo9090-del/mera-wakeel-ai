@@ -327,7 +327,7 @@ export const ForLawyersView: React.FC<ForLawyersViewProps> = ({
   const [showDropdown, setShowDropdown] = useState(false);
 
   // Derive advocate name & email from real logged-in user
-  const advocateEmail = currentUser?.email || 'advocate@merawakeel.ai';
+  const advocateEmail = currentUser?.email || 'merawakeelai@gmail.com';
   const advocateName = currentUser?.name || (currentUser?.email ? currentUser.email.split('@')[0].toUpperCase() : 'Adv. User');
 
   // --- MATCHES STATE ---

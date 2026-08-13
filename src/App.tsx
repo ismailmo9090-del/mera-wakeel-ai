@@ -26,6 +26,7 @@ import { FreeLegalAidView } from './components/views/FreeLegalAidView';
 import { AdminDashboardView } from './components/views/AdminDashboardView';
 import { HelpView } from './components/views/HelpView';
 import { supabase, fetchProfile, createOrUpdateProfile, resolveDisplayName, createCase, fetchUserCases } from './lib/supabase';
+import { updateSeoMeta } from './lib/seo';
 import { motion, AnimatePresence } from 'motion/react';
 
 // ---------------------------------------------------------------------------
@@ -148,25 +149,7 @@ export default function App() {
   }, [currentTab]);
 
   useEffect(() => {
-    const titleMap: Record<NavTab, string> = {
-      'home': 'Mera Wakeel AI — Apna Personal Legal Guide',
-      'how-it-works': 'How It Works — Mera Wakeel AI',
-      'for-lawyers': 'Advocate Portal — Mera Wakeel AI',
-      'my-cases': 'My Cases — Mera Wakeel AI',
-      'chat': 'AI Legal Consultation — Mera Wakeel AI',
-      'lawyers': 'Find Verified Lawyers — Mera Wakeel AI',
-      'advocates': 'Find & Contact Verified Advocates — Mera Wakeel AI',
-      'documents': 'Legal Document Reader — Mera Wakeel AI',
-      'settings': 'Settings & Privacy — Mera Wakeel AI',
-      'privacy': 'Privacy Policy — Mera Wakeel AI',
-      'terms': 'Terms & Conditions — Mera Wakeel AI',
-      'auth': 'Login & Register — Mera Wakeel AI',
-      'draft-documents': 'AI Document Drafting — Mera Wakeel AI',
-      'free-legal-aid': 'Free Government Legal Aid — Mera Wakeel AI',
-      'admin': 'Admin Dashboard — Mera Wakeel AI',
-      'help': 'Help Center — Mera Wakeel AI',
-    };
-    document.title = titleMap[currentTab] || 'Mera Wakeel AI — Apna Personal Legal Guide';
+    updateSeoMeta(currentTab);
   }, [currentTab]);
 
   const [isCreatingCase, setIsCreatingCase] = useState(false);

@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+
+# Login/internal dashboards — no need to index
+Disallow: /login
+Disallow: /my-cases
+Disallow: /chat
+Disallow: /documents
+Disallow: /settings
+Disallow: /admin
+
+Sitemap: https://mera-wakeel-ai.onrender.com/sitemap.xml

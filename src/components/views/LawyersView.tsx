@@ -423,7 +423,7 @@ export const LawyersView: React.FC<LawyersViewProps> = ({
 
           <div className="flex items-center gap-2">
             <button
-              onClick={() => alert(`Calling Adv. ${lawyerName}... Helpline: 1800-123-LEGAL`)}
+              onClick={() => alert(`Request call for Adv. ${lawyerName}. Contact support: merawakeelai@gmail.com`)}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-[#D97706] hover:bg-[#B45309] text-[#FFFFFF] text-xs font-bold rounded-xl cursor-pointer shadow-xs"
             >
               <Phone className="w-3.5 h-3.5" />

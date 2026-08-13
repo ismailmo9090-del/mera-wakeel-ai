@@ -179,7 +179,7 @@ export const PrivacyPolicyView: React.FC<PrivacyPolicyViewProps> = ({ language, 
             label: S.contactDept,
             variant: 'gold',
             icon: Mail,
-            href: 'mailto:privacy@merawakeel.ai',
+            href: 'mailto:merawakeelai@gmail.com',
           },
         ]}
       />
@@ -367,10 +367,10 @@ export const PrivacyPolicyView: React.FC<PrivacyPolicyViewProps> = ({ language, 
             <div className="p-4 bg-[#0F2557] text-[#FFFFFF] rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
               <div className="space-y-1">
                 <div className="font-bold text-[#F5A623]">Mera Wakeel AI Privacy Desk</div>
-                <div className="text-[#CBD5E1]">support@merawakeel.ai · privacy@merawakeel.ai</div>
+                <div className="text-[#CBD5E1]">merawakeelai@gmail.com</div>
               </div>
               <a
-                href="mailto:privacy@merawakeel.ai"
+                href="mailto:merawakeelai@gmail.com"
                 className="px-4 py-2 rounded-xl bg-[#F5A623] text-[#0F2557] font-bold text-xs hover:bg-[#E0940F] transition-colors cursor-pointer"
               >
                 {isHi ? 'ईमेल करें' : 'Email Us'}

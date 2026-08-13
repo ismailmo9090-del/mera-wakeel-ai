@@ -19,8 +19,8 @@ export const APP_CONFIG = {
   },
 
   // Contact & Support Information
-  supportEmail: 'support@merawakeel.ai',
-  helplinePhone: '1800-123-9876',
+  supportEmail: 'merawakeelai@gmail.com',
+  helplinePhone: '',
   address: 'New Delhi, Delhi, India',
 
   // Social & Legal

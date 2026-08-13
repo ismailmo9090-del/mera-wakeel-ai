@@ -204,7 +204,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
               <div>
                 <span className="font-bold text-[#64748B]">Account Email:</span>{' '}
-                <span className="font-mono text-[#0F172A]">{currentUser?.email || 'guest@merawakeel.ai'}</span>
+                <span className="font-mono text-[#0F172A]">{currentUser?.email || 'merawakeelai@gmail.com'}</span>
               </div>
               <div>
                 <span className="font-bold text-[#64748B]">Role Category:</span>{' '}
