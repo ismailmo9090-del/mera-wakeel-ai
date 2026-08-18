@@ -164,7 +164,7 @@ export function registerAiRoutes(app: express.Express, ctx: ServerContext): void
             "Authorization": `Bearer ${groqKey}`,
           },
           body: JSON.stringify({
-            model: "llama-3.3-70b-versatile",
+            model: "openai/gpt-oss-20b",
             messages,
             temperature,
           }),
@@ -299,7 +299,7 @@ export function registerAiRoutes(app: express.Express, ctx: ServerContext): void
                 "Authorization": `Bearer ${groqKey}`,
               },
               body: JSON.stringify({
-                model: "llama-4-scout-17b-16e-instruct",
+                model: "qwen/qwen3.6-27b",
                 messages: visionMessages,
                 temperature: 0.1,
                 max_tokens: 1024,
@@ -355,7 +355,7 @@ export function registerAiRoutes(app: express.Express, ctx: ServerContext): void
             "Authorization": `Bearer ${groqKey}`,
           },
           body: JSON.stringify({
-            model: "llama-3.3-70b-versatile",
+            model: "openai/gpt-oss-120b",
             messages,
             temperature: 0.5,
             max_tokens: 1024,
@@ -476,7 +476,7 @@ Answer technical questions concisely (2-4 sentences max), confidently, and accur
               "Authorization": `Bearer ${groqKey}`,
             },
             body: JSON.stringify({
-              model: "llama-3.3-70b-versatile",
+              model: "openai/gpt-oss-120b",
               messages: [
                 { role: "system", content: systemPrompt },
                 { role: "user", content: question },
