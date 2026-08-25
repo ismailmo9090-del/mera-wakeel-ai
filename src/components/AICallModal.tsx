@@ -17,7 +17,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { speakNaturalMaleVoice, stopNaturalVoice } from '../lib/audioVoice';
-import { sendGeminiChatMessage, fileToBase64, FileData } from '../lib/geminiApi';
+import { sendGeminiChatMessage, sendGeminiChatMessageStream, fileToBase64, FileData } from '../lib/geminiApi';
 import { startWebAudioCapture, AudioCaptureSession } from '../lib/webAudioCapture';
 import { fetchCaseMessages, fetchFactsBlock } from '../lib/supabase';
 import { APP_CONFIG } from '../constants';
@@ -124,6 +124,54 @@ export const AICallModal: React.FC<AICallModalProps> = ({
     isMutedRef.current = isMuted;
   }, [isMuted]);
 
+  // Safety wrapper: ensures onEnd ALWAYS fires even if TTS silently fails
+  const speakWithSafety = (
+    text: string,
+    lang: 'hi' | 'en' | 'hinglish',
+    onSpeaking?: () => void,
+    onDone?: () => void,
+    retries = 1
+  ) => {
+    let finished = false;
+    const safeDone = () => {
+      if (finished) return;
+      finished = true;
+      if (onDone) onDone();
+    };
+
+    // Safety timeout: if onEnd doesn't fire within 12s, force-transition to listening
+    const safetyTimer = setTimeout(() => {
+      console.warn('[AI-CALL] TTS safety timeout fired — forcing listening state');
+      safeDone();
+    }, 12000);
+
+    speakNaturalMaleVoice(
+      text,
+      lang,
+      () => {
+        if (onSpeaking) onSpeaking();
+      },
+      () => {
+        clearTimeout(safetyTimer);
+        if (finished) return;
+        finished = true;
+        if (onDone) onDone();
+      }
+    ).catch(() => {
+      clearTimeout(safetyTimer);
+      if (retries > 0 && isCallActiveRef.current) {
+        // Retry once after brief pause
+        setTimeout(() => {
+          if (isCallActiveRef.current) {
+            speakWithSafety(text, lang, onSpeaking, onDone, retries - 1);
+          }
+        }, 500);
+      } else {
+        safeDone();
+      }
+    });
+  };
+
   const CALL_INTRO = language === 'hi'
     ? 'बताइए सर मैं आपकी क्या हेल्प कर सकती हूँ'
     : language === 'en'
@@ -201,7 +249,7 @@ export const AICallModal: React.FC<AICallModalProps> = ({
         content: CALL_INTRO,
       });
 
-      speakNaturalMaleVoice(
+      speakWithSafety(
         CALL_INTRO,
         language,
         () => {
@@ -249,28 +297,38 @@ export const AICallModal: React.FC<AICallModalProps> = ({
 
   // Handler when user finishes speaking (detected via VAD or SpeechRecognition)
   const handleUserFinishedSpeaking = async () => {
-    if (!isCallActiveRef.current || !isListeningActiveRef.current) return;
-    isListeningActiveRef.current = false;
+    if (!isCallActiveRef.current) return;
 
+    // Prevent double-fire
     if (silenceTimerRef.current) {
       clearTimeout(silenceTimerRef.current);
       silenceTimerRef.current = null;
     }
 
+    // Stop recognition immediately so it doesn't interfere
     if (recognitionRef.current) {
-      try { recognitionRef.current.abort(); } catch (e) {}
+      try {
+        recognitionRef.current.onend = null;
+        recognitionRef.current.abort();
+      } catch (e) {}
     }
 
-    // Instant check: use real-time SpeechRecognition transcript first (0ms network delay)
+    isListeningActiveRef.current = false;
+
+    // Use SpeechRecognition transcript first (already captured in lastTranscriptRef)
     let finalSpeech = lastTranscriptRef.current.trim();
 
-    if (callAudioSessionRef.current) {
-      if (!finalSpeech) {
-        // Fallback to Groq Whisper STT only if SpeechRecognition produced empty transcript
+    // Fallback: use Groq Whisper STT via Web Audio MediaRecorder if available
+    if (!finalSpeech && callAudioSessionRef.current) {
+      try {
         finalSpeech = (await callAudioSessionRef.current.stopAndTranscribe(language)).trim();
-      } else {
-        callAudioSessionRef.current.cancel();
+      } catch (e) {
+        console.warn('[AI-CALL] Whisper STT fallback error:', e);
       }
+    }
+
+    if (callAudioSessionRef.current) {
+      try { callAudioSessionRef.current.cancel(); } catch (e) {}
       callAudioSessionRef.current = null;
     }
 
@@ -279,79 +337,68 @@ export const AICallModal: React.FC<AICallModalProps> = ({
     if (finalSpeech) {
       processUserSpokenInput(finalSpeech);
     } else {
+      // No speech detected — restart listening
       setCallState('listening');
       startContinuousListening();
     }
   };
 
-  // Continuous Web Audio stream capture + Groq Whisper STT + SpeechRecognition
+  // Robust restart helper — always resets state before starting fresh
+  const restartListening = async () => {
+    if (!isCallActiveRef.current || isMutedRef.current) return;
+
+    // Full cleanup of previous recognition
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.onstart = null;
+        recognitionRef.current.onresult = null;
+        recognitionRef.current.onerror = null;
+        recognitionRef.current.onend = null;
+        recognitionRef.current.abort();
+      } catch (e) {}
+      recognitionRef.current = null;
+    }
+
+    // Reset state so startContinuousListening guard passes
+    isListeningActiveRef.current = false;
+    lastTranscriptRef.current = '';
+
+    await startContinuousListening();
+  };
+
+  // Primary listening: SpeechRecognition handles mic internally (no conflict with Web Audio)
+  // Web Audio VAD is used ONLY as fallback for browsers without SpeechRecognition
   const startContinuousListening = async () => {
     if (!isCallActiveRef.current || isMutedRef.current || isListeningActiveRef.current) return;
 
-    try {
-      if (callAudioSessionRef.current) {
-        callAudioSessionRef.current.cancel();
-        callAudioSessionRef.current = null;
-      }
+    isListeningActiveRef.current = true;
+    setCallState('listening');
 
-      isListeningActiveRef.current = true;
-      setCallState('listening');
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
-      // Start Web Audio Stream Capture with Volume Detection & Voice Activity Detection (VAD)
-      const audioSession = await startWebAudioCapture(
-        (vol) => {
-          if (isCallActiveRef.current) setInCallVolume(vol);
-        },
-        () => {
-          // User started speaking - clear any pending silence timers
-          if (silenceTimerRef.current) {
-            clearTimeout(silenceTimerRef.current);
-            silenceTimerRef.current = null;
-          }
-        },
-        () => {
-          // User stopped speaking -> trigger AI response after brief 700ms pause
-          handleUserFinishedSpeaking();
-        },
-        700 // 700ms natural conversational pause
-      );
+    if (SpeechRecognition) {
+      // === PRIMARY: SpeechRecognition (handles mic internally, no conflict) ===
+      try {
+        if (recognitionRef.current) {
+          try {
+            recognitionRef.current.onstart = null;
+            recognitionRef.current.onresult = null;
+            recognitionRef.current.onerror = null;
+            recognitionRef.current.onend = null;
+            recognitionRef.current.abort();
+          } catch (e) {}
+          recognitionRef.current = null;
+        }
 
-      if (!isCallActiveRef.current) {
-        if (audioSession) audioSession.cancel();
-        return;
-      }
-
-      if (audioSession) {
-        callAudioSessionRef.current = audioSession;
-      }
-
-const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-        if (SpeechRecognition) {
-          if (recognitionRef.current) {
-            try {
-              recognitionRef.current.onstart = null;
-              recognitionRef.current.onresult = null;
-              recognitionRef.current.onerror = null;
-              recognitionRef.current.onend = null;
-              recognitionRef.current.abort();
-            } catch (e) {}
-          }
-
-          const recognition = new SpeechRecognition();
-          recognition.continuous = true;
-          recognition.interimResults = true;
-          const langMap: Record<string, string> = {
-            en: 'en-IN',
-            hi: 'hi-IN',
-            hinglish: 'hi-IN',
-            ta: 'ta-IN',
-            te: 'te-IN',
-            mr: 'mr-IN',
-            bn: 'bn-IN',
-            kn: 'kn-IN',
-            gu: 'gu-IN',
-          };
-          recognition.lang = langMap[language] || 'hi-IN';
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        const langMap: Record<string, string> = {
+          en: 'en-IN', hi: 'hi-IN', hinglish: 'hi-IN',
+          ta: 'ta-IN', te: 'te-IN', mr: 'mr-IN',
+          bn: 'bn-IN', kn: 'kn-IN', gu: 'gu-IN',
+        };
+        recognition.lang = langMap[language] || 'hi-IN';
 
         lastTranscriptRef.current = '';
 
@@ -374,40 +421,87 @@ const SpeechRecognition = (window as any).SpeechRecognition || (window as any).w
 
             if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
 
-            // Wait 700ms after user stops speaking before responding
+            // Wait 500ms after user stops speaking before responding (snappy)
             silenceTimerRef.current = setTimeout(() => {
               handleUserFinishedSpeaking();
-            }, 700);
+            }, 500);
           }
         };
 
         recognition.onerror = (err: any) => {
           const errorName = err?.error || err;
+          if (errorName === 'not-allowed' || errorName === 'service-not-allowed') {
+            console.warn('[AI-CALL] Mic permission denied — cannot listen');
+            isListeningActiveRef.current = false;
+            return;
+          }
           if (errorName !== 'no-speech' && errorName !== 'aborted') {
-            console.warn('Speech recognition notice:', errorName);
+            console.warn('[AI-CALL] Speech recognition error:', errorName);
           }
         };
 
         recognition.onend = () => {
-          if (isCallActiveRef.current && callStateRef.current === 'listening' && !isMutedRef.current && !isListeningActiveRef.current) {
+          // ALWAYS restart recognition when it ends (it auto-stops after silence)
+          // The only time we don't restart is if call ended or user is muted
+          if (isCallActiveRef.current && !isMutedRef.current) {
+            isListeningActiveRef.current = false;
             setTimeout(() => {
-              if (isCallActiveRef.current && callStateRef.current === 'listening' && !isListeningActiveRef.current) {
+              if (isCallActiveRef.current && !isMutedRef.current) {
                 startContinuousListening();
               }
-            }, 250);
+            }, 100);
           }
         };
 
         recognitionRef.current = recognition;
         recognition.start();
+      } catch (e) {
+        console.warn('[AI-CALL] SpeechRecognition start failed:', e);
+        isListeningActiveRef.current = false;
       }
-    } catch (e) {
-      console.warn('Call listening start error:', e);
-      isListeningActiveRef.current = false;
+    } else {
+      // === FALLBACK: Web Audio VAD + Groq Whisper (for browsers without SpeechRecognition) ===
+      try {
+        if (callAudioSessionRef.current) {
+          callAudioSessionRef.current.cancel();
+          callAudioSessionRef.current = null;
+        }
+
+        const audioSession = await startWebAudioCapture(
+          (vol) => {
+            if (isCallActiveRef.current) setInCallVolume(vol);
+          },
+          () => {
+            if (silenceTimerRef.current) {
+              clearTimeout(silenceTimerRef.current);
+              silenceTimerRef.current = null;
+            }
+          },
+          () => {
+            handleUserFinishedSpeaking();
+          },
+          500  // 500ms natural conversational pause (VAD fallback)
+        );
+
+        if (!isCallActiveRef.current) {
+          if (audioSession) audioSession.cancel();
+          return;
+        }
+
+        if (audioSession) {
+          callAudioSessionRef.current = audioSession;
+        } else {
+          console.warn('[AI-CALL] Web Audio capture unavailable — mic may be denied');
+          isListeningActiveRef.current = false;
+        }
+      } catch (e) {
+        console.warn('[AI-CALL] Web Audio fallback error:', e);
+        isListeningActiveRef.current = false;
+      }
     }
   };
 
-  // Handle User Input (Spoken text or document)
+  // Handle User Input (Spoken text or document) — STREAMING for instant first-sentence TTS
   const processUserSpokenInput = async (spokenText: string, fileData?: FileData | null) => {
     if (!isCallActiveRef.current) return;
 
@@ -435,83 +529,164 @@ const SpeechRecognition = (window as any).SpeechRecognition || (window as any).w
       fileAttached: fileData?.fileName,
     };
 
-    // Add user turn to transcript memory and notify live chat parent
     transcriptRef.current.push(userMsg);
     if (onLiveMessage) {
       onLiveMessage(userMsg);
     }
 
-    // Format combined chat history (past DB history + current call turns) for Gemini API
     const currentCallHistory = transcriptRef.current.map((t) => ({
       role: t.sender_type === 'user' ? ('user' as const) : ('assistant' as const),
       content: t.content,
     }));
     const fullCombinedHistory = [...caseHistoryRef.current, ...currentCallHistory];
 
+    // Helper: speak a single sentence and wait for it to finish
+    const speakSentence = (text: string): Promise<void> => {
+      return new Promise((resolve) => {
+        if (!isCallActiveRef.current) { resolve(); return; }
+        setCallState('speaking');
+        speakNaturalMaleVoice(
+          text,
+          language,
+          () => { if (isCallActiveRef.current) setCallState('speaking'); },
+          () => { resolve(); }
+        ).catch(() => { resolve(); });
+        // Safety timeout per sentence
+        setTimeout(resolve, 10000);
+      });
+    };
+
     try {
-      const response = await sendGeminiChatMessage(
-        spokenText || 'Aapke samne uploaded document ka vishleshan karein aur samjhayein.',
-        fullCombinedHistory.slice(-30), // Send last 30 messages of history so AI never forgets!
-        language,
-        fileData,
-        true, // isCallMode = true for short, clean conversational phone call answers
-        caseId,
-        citizenId
-      );
+      if (fileData) {
+        // Document upload: use non-streaming (needs file analysis)
+        const response = await sendGeminiChatMessage(
+          spokenText || 'Aapke samne uploaded document ka vishleshan karein aur samjhayein.',
+          fullCombinedHistory.slice(-30),
+          language,
+          fileData,
+          true,
+          caseId,
+          citizenId
+        );
 
-      if (!isCallActiveRef.current) return;
+        if (!isCallActiveRef.current) return;
 
-      // Clean AI reply of any markdown symbols, slashes, asterisks, hashes, numbers, tags
-      const aiReply = (response.text || '')
-        .replace(/\[\[.*?\]\]/gi, '')
-        .replace(/Ye guidance sirf jaankari ke liye hai[^\.\n]*/gi, '')
-        .replace(/This guidance is for informational purposes only[^\.\n]*/gi, '')
-        .replace(/and does not constitute legal advice[^\.\n]*/gi, '')
-        .replace(/Please consult a licensed advocate[^\.\n]*/gi, '')
-        .replace(/https?:\/\/\S+/gi, '')
-        .replace(/[*_#`~/\\]/g, ' ')
-        .replace(/^[\s\-*•\d\.\)]+/gm, '')
-        .replace(/\b\d+\.\s*/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
+        const aiReply = (response.text || '')
+          .replace(/\[\[.*?\]\]/gi, '')
+          .replace(/Ye guidance sirf jaankari ke liye hai[^\.\n]*/gi, '')
+          .replace(/This guidance is for informational purposes only[^\.\n]*/gi, '')
+          .replace(/and does not constitute legal advice[^\.\n]*/gi, '')
+          .replace(/Please consult a licensed advocate[^\.\n]*/gi, '')
+          .replace(/https?:\/\/\S+/gi, '')
+          .replace(/[*_#`~/\\]/g, ' ')
+          .replace(/^[\s\-*•\d\.\)]+/gm, '')
+          .replace(/\b\d+\.\s*/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
 
-      const aiMsg = {
-        sender_type: 'ai' as const,
-        content: aiReply,
-      };
+        transcriptRef.current.push({ sender_type: 'ai', content: aiReply });
+        if (onLiveMessage) onLiveMessage({ sender_type: 'ai', content: aiReply });
 
-      // Add AI reply to transcript memory and notify live chat parent
-      transcriptRef.current.push(aiMsg);
-      if (onLiveMessage) {
-        onLiveMessage(aiMsg);
-      }
+        setCallState('speaking');
+        await speakSentence(aiReply);
 
-      // Clear attached file notice after processing
-      setAttachedFile(null);
-      setUploadStatus(null);
+        if (isCallActiveRef.current) {
+          setCallState('listening');
+          startContinuousListening();
+        }
+      } else {
+        // Text input: STREAMING — first sentence speaks while AI is still generating
+        let fullAiReply = '';
+        const sentenceQueue: string[] = [];
+        let isStreamDone = false;
+        let firstSentenceSpoken = false;
+        let streamError = false;
 
-      if (!isCallActiveRef.current) return;
+        const processQueue = async () => {
+          while (sentenceQueue.length > 0) {
+            if (!isCallActiveRef.current) return;
+            const sentence = sentenceQueue.shift()!;
+            await speakSentence(sentence);
+          }
+          // All queued sentences spoken — if stream is done, restart mic
+          if (isStreamDone && isCallActiveRef.current) {
+            setCallState('listening');
+            startContinuousListening();
+          }
+        };
 
-      // Speak reply in Natural Female AI Voice
-      setCallState('speaking');
-      speakNaturalMaleVoice(
-        aiReply,
-        language,
-        () => {
-          if (isCallActiveRef.current) setCallState('speaking');
-        },
-        () => {
+        await sendGeminiChatMessageStream(
+          spokenText,
+          fullCombinedHistory.slice(-30),
+          language,
+          true,
+          caseId,
+          citizenId,
+          undefined,
+          undefined,
+          // onToken: just accumulate
+          (_token) => {},
+          // onSentence: queue for immediate TTS
+          (sentence) => {
+            if (!isCallActiveRef.current) return;
+            const cleaned = sentence
+              .replace(/\[\[.*?\]\]/gi, '')
+              .replace(/Ye guidance sirf jaankari ke liye hai[^\.\n]*/gi, '')
+              .replace(/This guidance is for informational purposes only[^\.\n]*/gi, '')
+              .replace(/and does not constitute legal advice[^\.\n]*/gi, '')
+              .replace(/Please consult a licensed advocate[^\.\n]*/gi, '')
+              .replace(/https?:\/\/\S+/gi, '')
+              .replace(/[*_#`~/\\]/g, ' ')
+              .replace(/^[\s\-*•\d\.\)]+/gm, '')
+              .replace(/\b\d+\.\s*/g, ' ')
+              .replace(/\s+/g, ' ')
+              .trim();
+            if (cleaned) {
+              sentenceQueue.push(cleaned);
+              // Start processing queue immediately (fire-and-forget)
+              processQueue();
+            }
+          },
+          // onDone: stream finished
+          (fullText) => {
+            fullAiReply = fullText;
+            isStreamDone = true;
+            // Add complete reply to transcript
+            const cleaned = fullText
+              .replace(/\[\[.*?\]\]/gi, '')
+              .replace(/Ye guidance sirf jaankari ke liye hai[^\.\n]*/gi, '')
+              .replace(/This guidance is for informational purposes only[^\.\n]*/gi, '')
+              .replace(/\s+/g, ' ')
+              .trim();
+            transcriptRef.current.push({ sender_type: 'ai', content: cleaned });
+            if (onLiveMessage) onLiveMessage({ sender_type: 'ai', content: cleaned });
+            setAttachedFile(null);
+            setUploadStatus(null);
+          },
+          // onError
+          (error) => {
+            console.error('[AI-CALL] Stream error:', error);
+            streamError = true;
+            isStreamDone = true;
+          }
+        );
+
+        // If stream finished but queue wasn't processed (edge case), process now
+        if (!streamError && sentenceQueue.length > 0) {
+          await processQueue();
+        } else if (!streamError && !firstSentenceSpoken) {
+          // Empty response
           if (isCallActiveRef.current) {
             setCallState('listening');
             startContinuousListening();
           }
         }
-      );
+      }
     } catch (err) {
       if (!isCallActiveRef.current) return;
       console.error('Call AI processing error:', err);
       const fallbackReply = 'Samasya samajhne me dikkat aayi. Kripya apni baat dobara kahein.';
-      speakNaturalMaleVoice(
+      speakWithSafety(
         fallbackReply,
         language,
         () => {
@@ -554,14 +729,18 @@ const SpeechRecognition = (window as any).SpeechRecognition || (window as any).w
     setIsMuted(newMute);
     if (newMute) {
       if (recognitionRef.current) {
-        try { recognitionRef.current.stop(); } catch (e) {}
+        try {
+          recognitionRef.current.onend = null;
+          recognitionRef.current.abort();
+        } catch (e) {}
       }
       if (callAudioSessionRef.current) {
         callAudioSessionRef.current.cancel();
         callAudioSessionRef.current = null;
       }
+      isListeningActiveRef.current = false;
     } else {
-      startContinuousListening();
+      restartListening();
     }
   };
 

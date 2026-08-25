@@ -287,7 +287,7 @@ async function fetchTtsChunk(
 ): Promise<{ audio: string; mimeType: string } | null> {
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3500); // 3.5s timeout per sentence chunk
+    const timeoutId = setTimeout(() => controller.abort(), 2500); // 2.5s timeout per sentence chunk
 
     const res = await fetch('/api/tts', {
       method: 'POST',

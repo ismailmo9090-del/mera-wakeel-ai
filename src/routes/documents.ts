@@ -33,7 +33,7 @@ export function registerDocumentsRoutes(app: express.Express, ctx: ServerContext
               "Content-Type": "application/json",
               "Authorization": `Bearer ${groqKey}`,
             },
-            body: JSON.stringify({ model: "openai/gpt-oss-120b", messages: polishPrompt, temperature: 0.2, max_tokens: 2000 }),
+            body: JSON.stringify({ model: "llama-3.3-70b-versatile", messages: polishPrompt, temperature: 0.2, max_tokens: 2000 }),
           });
           if (polishRes.ok) {
             const pData = await polishRes.json();
@@ -68,7 +68,7 @@ export function registerDocumentsRoutes(app: express.Express, ctx: ServerContext
           title,
           content: finalText,
           file_url: null,
-          model: "openai/gpt-oss-120b",
+          model: "llama-3.3-70b-versatile",
           created_at: new Date().toISOString(),
         };
         const { data } = await supabaseAdmin.from("generated_documents").insert(rec).select("id").single();

@@ -180,7 +180,7 @@ export function registerAiRoutes(app: express.Express, ctx: ServerContext): void
     }
 
     try {
-      const { messages, model = "openai/gpt-oss-120b", temperature = 0.5 } = req.body;
+      const { messages, model = "llama-3.3-70b-versatile", temperature = 0.5 } = req.body;
 
       let response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
@@ -195,7 +195,7 @@ export function registerAiRoutes(app: express.Express, ctx: ServerContext): void
         }),
       });
 
-      if (!response.ok && model === "openai/gpt-oss-120b") {
+      if (!response.ok && model === "llama-3.3-70b-versatile") {
         response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
           headers: {
@@ -203,7 +203,7 @@ export function registerAiRoutes(app: express.Express, ctx: ServerContext): void
             "Authorization": `Bearer ${groqKey}`,
           },
           body: JSON.stringify({
-            model: "openai/gpt-oss-20b",
+            model: "llama-3.1-8b-instant",
             messages,
             temperature,
           }),
@@ -353,7 +353,7 @@ export function registerAiRoutes(app: express.Express, ctx: ServerContext): void
                 "Authorization": `Bearer ${groqKey}`,
               },
               body: JSON.stringify({
-                model: "qwen/qwen3.6-27b",
+                model: "llama-3.2-90b-vision-preview",
                 messages: visionMessages,
                 temperature: 0.1,
                 max_tokens: 1024,
@@ -402,26 +402,41 @@ export function registerAiRoutes(app: express.Express, ctx: ServerContext): void
           content: prompt || "Kripya kanooni sahayata pradan karein.",
         });
 
-        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${groqKey}`,
-          },
-          body: JSON.stringify({
-            model: "openai/gpt-oss-120b",
-            messages,
-            temperature: 0.5,
-            max_tokens: 1024,
-          }),
-        });
+        // Try primary model, fallback to smaller model if it fails
+        const models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"];
+        for (const model of models) {
+          try {
+            const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${groqKey}`,
+              },
+              body: JSON.stringify({
+                model,
+                messages,
+                temperature: 0.5,
+                max_tokens: 1024,
+              }),
+            });
 
-        if (response.ok) {
-          const data = await response.json();
-          let replyText = data.choices?.[0]?.message?.content || "Maaf kijiye, response milne me dikkat aayi.";
-          replyText = replyText.replace(/ thinking[\s\S]*?<\/think>/gi, '').trim();
-          return res.json({ text: replyText, detectedLanguage });
+            if (response.ok) {
+              const data = await response.json();
+              let replyText = data.choices?.[0]?.message?.content || "";
+              replyText = replyText.replace(/ thinking[\s\S]*?<\/think>/gi, '').trim();
+              if (replyText) {
+                return res.json({ text: replyText, detectedLanguage });
+              }
+            } else {
+              const errBody = await response.text().catch(() => "");
+              console.warn(`[CHAT] Groq ${model} failed:`, response.status, errBody.slice(0, 200));
+            }
+          } catch (fetchErr: any) {
+            console.warn(`[CHAT] Groq ${model} fetch error:`, fetchErr?.message || fetchErr);
+          }
         }
+      } else {
+        console.warn("[CHAT] No GROQ_API_KEY configured — cannot process chat");
       }
 
       let fallbackText = "नमस्ते सर/मैडम, थोड़ा समय दें। नेटवर्क में कुछ धीमापन है, मैं अभी आपकी बात फिर से देख रही हूँ।";
@@ -483,7 +498,8 @@ export function registerAiRoutes(app: express.Express, ctx: ServerContext): void
       const ttsRes = await fetch(ttsUrl, {
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
+        },
+        signal: AbortSignal.timeout(5000),
       });
 
       if (ttsRes.ok) {
@@ -498,6 +514,7 @@ export function registerAiRoutes(app: express.Express, ctx: ServerContext): void
         return res.json({ audio: base64Audio, mimeType });
       }
 
+      console.warn("[TTS] Google Translate TTS failed:", ttsRes.status);
       return res.status(500).json({ error: "TTS generation failed" });
     } catch (err: any) {
       console.error("TTS Endpoint Error:", err);
@@ -509,6 +526,117 @@ export function registerAiRoutes(app: express.Express, ctx: ServerContext): void
   app.post("/api/gemini/chat", handleChatRequest);
   app.post("/api/tts", handleTtsRequest);
   app.post("/api/gemini/tts", handleTtsRequest);
+
+  // ─── STREAMING CHAT ENDPOINT (for AI Call — sentence-by-sentence TTS) ───
+  app.post("/api/gemini/chat/stream", async (req: express.Request, res: express.Response) => {
+    try {
+      const { prompt = "", history = [], language = "hi", isCallMode = false, factsBlock = "", ragContext = "" } = req.body;
+
+      const groqKey = process.env.GROQ_API_KEY || process.env.VITE_GROQ_API_KEY;
+      if (!groqKey) {
+        return res.status(500).json({ error: "Groq API key not configured" });
+      }
+
+      let detectedLanguage = language;
+      try {
+        const detection = detectLanguageWithStats(prompt || "");
+        if (prompt && prompt.trim()) {
+          const conf = detection.confidence || 0;
+          detectedLanguage = conf >= 0.5 ? detection.language : language;
+        }
+      } catch (_e) {}
+
+      const languageInstructions = languageInstructionsFor(detectedLanguage);
+      let systemPrompt = buildLegalSystemPrompt(languageInstructions, isCallMode);
+
+      if (factsBlock && factsBlock.trim()) {
+        systemPrompt += `\n\n${factsBlock.trim()}\n\nCRITICAL CONTEXT RULE: Never re-ask for any fact that already appears in the fact block above.`;
+      }
+      if (ragContext && typeof ragContext === "string" && ragContext.trim()) {
+        systemPrompt += `\n\n${ragContext.trim()}`;
+      }
+
+      const messages: any[] = [{ role: "system", content: systemPrompt }];
+      if (history && Array.isArray(history)) {
+        history.forEach((h: any) => {
+          messages.push({
+            role: h.role === "user" ? "user" : "assistant",
+            content: typeof h.content === "string" ? h.content : String(h.content || ""),
+          });
+        });
+      }
+      messages.push({ role: "user", content: prompt || "Kripya kanooni sahayata pradan karein." });
+
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.setHeader("X-Accel-Buffering", "no");
+      res.flushHeaders();
+
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${groqKey}`,
+        },
+        body: JSON.stringify({
+          model: "llama-3.3-70b-versatile",
+          messages,
+          temperature: 0.5,
+          max_tokens: 1024,
+          stream: true,
+        }),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        res.write(`data: ${JSON.stringify({ error: errText })}\n\n`);
+        res.write("data: [DONE]\n\n");
+        return res.end();
+      }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let fullText = "";
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || !trimmed.startsWith("data: ")) continue;
+            const data = trimmed.slice(6);
+            if (data === "[DONE]") continue;
+            try {
+              const parsed = JSON.parse(data);
+              const delta = parsed.choices?.[0]?.delta?.content;
+              if (delta) {
+                fullText += delta;
+                res.write(`data: ${JSON.stringify({ token: delta, done: false })}\n\n`);
+              }
+            } catch (_e) {}
+          }
+        }
+      }
+
+      const cleaned = fullText.replace(/ thinking[\s\S]*?<\/think>/gi, '').trim();
+      res.write(`data: ${JSON.stringify({ text: cleaned, done: true })}\n\n`);
+      res.write("data: [DONE]\n\n");
+      res.end();
+    } catch (err: any) {
+      console.error("Streaming chat error:", err);
+      try {
+        res.write(`data: ${JSON.stringify({ error: err.message || "Stream failed" })}\n\n`);
+        res.write("data: [DONE]\n\n");
+        res.end();
+      } catch (_e) {}
+    }
+  });
 
   app.post("/api/judge-qa", async (req: express.Request, res: express.Response) => {
     try {
@@ -530,7 +658,7 @@ Answer technical questions concisely (2-4 sentences max), confidently, and accur
               "Authorization": `Bearer ${groqKey}`,
             },
             body: JSON.stringify({
-              model: "openai/gpt-oss-120b",
+              model: "llama-3.3-70b-versatile",
               messages: [
                 { role: "system", content: systemPrompt },
                 { role: "user", content: question },

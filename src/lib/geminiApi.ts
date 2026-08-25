@@ -48,22 +48,34 @@ export async function sendGeminiChatMessage(
   signal?: AbortSignal
 ): Promise<GeminiChatResponse> {
   try {
-    let factsBlock = passedFactsBlock || '';
-    if (!file && !factsBlock && (caseId || citizenId)) {
-      factsBlock = await fetchFactsBlock(caseId || null, citizenId || null);
-    }
-
-    // Skip RAG Vector Similarity Search for document attachments to eliminate unnecessary database latency
-    let ragContext = '';
-    if (!file && prompt && prompt.trim()) {
-      try {
-        const retrievedChunks = await searchKnowledgeBase(prompt, category || null, 4);
-        const { contextText } = formatRAGContext(retrievedChunks, 0.25);
-        ragContext = contextText;
-      } catch (e) {
-        console.warn('RAG similarity search warning:', e);
-      }
-    }
+    // Parallelize independent async work: facts block + RAG search run concurrently
+    const [factsBlock, ragContext] = await Promise.all([
+      (async () => {
+        if (passedFactsBlock) return passedFactsBlock;
+        if (file) return '';
+        if (caseId || citizenId) {
+          try {
+            return await fetchFactsBlock(caseId || null, citizenId || null);
+          } catch (e) {
+            console.warn('Facts block fetch warning:', e);
+            return '';
+          }
+        }
+        return '';
+      })(),
+      (async () => {
+        if (file) return '';
+        if (!prompt || !prompt.trim()) return '';
+        try {
+          const retrievedChunks = await searchKnowledgeBase(prompt, category || null, 4);
+          const { contextText } = formatRAGContext(retrievedChunks, 0.25);
+          return contextText;
+        } catch (e) {
+          console.warn('RAG similarity search warning:', e);
+          return '';
+        }
+      })(),
+    ]);
 
     const response = await fetch('/api/gemini/chat', {
       method: 'POST',
@@ -192,4 +204,138 @@ export function fileToBase64(file: File): Promise<{ mimeType: string; data: stri
     reader.onerror = (error) => reject(error);
     reader.readAsDataURL(file);
   });
+}
+
+/**
+ * Streaming chat for AI Call — calls onToken for each streamed chunk,
+ * calls onSentence when a full sentence is ready for TTS,
+ * calls onDone with the complete text when stream finishes.
+ */
+export async function sendGeminiChatMessageStream(
+  prompt: string,
+  history: ChatApiMessage[],
+  language: 'hi' | 'en' | 'hinglish' = 'hi',
+  isCallMode: boolean = true,
+  caseId?: string | null,
+  citizenId?: string | null,
+  factsBlock?: string | null,
+  category?: any,
+  onToken?: (token: string) => void,
+  onSentence?: (sentence: string) => void,
+  onDone?: (fullText: string) => void,
+  onError?: (error: string) => void,
+  signal?: AbortSignal
+): Promise<void> {
+  try {
+    let resolvedFacts = factsBlock || '';
+    if (!resolvedFacts && (caseId || citizenId)) {
+      try {
+        resolvedFacts = await fetchFactsBlock(caseId || null, citizenId || null);
+      } catch (e) {
+        console.warn('Stream facts fetch warning:', e);
+      }
+    }
+
+    let ragContext = '';
+    if (prompt && prompt.trim()) {
+      try {
+        const retrievedChunks = await searchKnowledgeBase(prompt, category || null, 4);
+        const { contextText } = formatRAGContext(retrievedChunks, 0.25);
+        ragContext = contextText;
+      } catch (e) {
+        console.warn('Stream RAG warning:', e);
+      }
+    }
+
+    const response = await fetch('/api/gemini/chat/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt,
+        history,
+        language,
+        isCallMode,
+        caseId: caseId || null,
+        citizenId: citizenId || null,
+        factsBlock: resolvedFacts || '',
+        ragContext: ragContext || '',
+      }),
+      signal,
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      onError?.(errData.error || `Server error: ${response.status}`);
+      return;
+    }
+
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+    if (!reader) {
+      onError?.('No response body');
+      return;
+    }
+
+    let buffer = '';
+    let fullText = '';
+    let sentenceBuffer = '';
+
+    // Sentence-ending characters for Hindi/English/Hinglish
+    const sentenceEnders = /[.!?।\n]/;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith('data: ')) continue;
+        const data = trimmed.slice(6);
+        if (data === '[DONE]') continue;
+
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.error) {
+            onError?.(parsed.error);
+            return;
+          }
+          if (parsed.token) {
+            fullText += parsed.token;
+            sentenceBuffer += parsed.token;
+            onToken?.(parsed.token);
+
+            // Check if a sentence is complete
+            if (sentenceEnders.test(parsed.token)) {
+              const sentence = sentenceBuffer.trim();
+              sentenceBuffer = '';
+              if (sentence) {
+                onSentence?.(sentence);
+              }
+            }
+          }
+          if (parsed.done && parsed.text) {
+            // Flush any remaining text as a sentence
+            const remaining = sentenceBuffer.trim();
+            if (remaining) {
+              onSentence?.(remaining);
+            }
+            onDone?.(parsed.text);
+            return;
+          }
+        } catch (_e) {}
+      }
+    }
+
+    // Stream ended without done flag — flush remaining
+    const remaining = sentenceBuffer.trim();
+    if (remaining) onSentence?.(remaining);
+    onDone?.(fullText);
+  } catch (err: any) {
+    console.error('Streaming chat error:', err);
+    onError?.(err.message || 'Stream failed');
+  }
 }
