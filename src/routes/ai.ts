@@ -203,7 +203,7 @@ export function registerAiRoutes(app: express.Express, ctx: ServerContext): void
             "Authorization": `Bearer ${groqKey}`,
           },
           body: JSON.stringify({
-            model: "qwen/qwen3.6-27b",
+            model: "openai/gpt-oss-20b",
             messages,
             temperature,
           }),
@@ -224,294 +224,682 @@ export function registerAiRoutes(app: express.Express, ctx: ServerContext): void
   });
 
   async function handleChatRequest(req: express.Request, res: express.Response) {
+    const requestStartedAt = Date.now();
+
     try {
-      const { prompt = "", history = [], language = "hi", file, isCallMode = false, factsBlock = "", ragContext = "" } = req.body;
+      const {
+        prompt = "",
+        history = [],
+        language = "hi",
+        file,
+        isCallMode = false,
+        factsBlock = "",
+        ragContext = "",
+      } = req.body;
 
+      // ---------------------------------------------------------
+      // 1. Basic validation
+      // ---------------------------------------------------------
+      const cleanPrompt = String(prompt || "").trim();
+
+      if (!cleanPrompt && !(file && file.data)) {
+        return res.status(400).json({
+          error: "Prompt is required",
+        });
+      }
+
+      // ---------------------------------------------------------
+      // 2. Detect language
+      // ---------------------------------------------------------
       let detectedLanguage = language;
+
       try {
-        const detection = detectLanguageWithStats(prompt || "");
-        if (prompt && prompt.trim()) {
-          const conf = detection.confidence || 0;
-          detectedLanguage = conf >= 0.5 ? detection.language : language;
+        const detection = detectLanguageWithStats(cleanPrompt);
+
+        if (cleanPrompt) {
+          const confidence = detection.confidence || 0;
+
+          detectedLanguage =
+            confidence >= 0.5
+              ? detection.language
+              : language;
         }
-      } catch (_e) { /* keep client language on detection failure */ }
+      } catch (error) {
+        console.warn(
+          "[AI] Language detection failed:",
+          error
+        );
+      }
 
-      const languageInstructions = languageInstructionsFor(detectedLanguage);
+      const languageInstructions =
+        languageInstructionsFor(detectedLanguage);
 
+      // ---------------------------------------------------------
+      // 3. Build legal context
+      // ---------------------------------------------------------
       let citationContext = "";
+
       try {
-        citationContext = buildCitationContext(prompt || "", 6);
-      } catch (_e) { /* ignore citation errors */ }
+        citationContext = buildCitationContext(
+          cleanPrompt,
+          6
+        );
+      } catch (error) {
+        console.warn(
+          "[AI] Citation context failed:",
+          error
+        );
+      }
 
       let govAidContext = "";
+
       try {
-        govAidContext = buildGovernmentAidContextBlock(prompt || "");
-      } catch (_e) { /* ignore */ }
+        govAidContext =
+          buildGovernmentAidContextBlock(cleanPrompt);
+      } catch (error) {
+        console.warn(
+          "[AI] Government aid context failed:",
+          error
+        );
+      }
 
-      let systemPrompt = buildLegalSystemPrompt(languageInstructions, isCallMode);
+      let systemPrompt = buildLegalSystemPrompt(
+        languageInstructions,
+        isCallMode
+      );
 
-      if (citationContext && citationContext.trim()) {
+      if (citationContext.trim()) {
         systemPrompt += `\n\n${citationContext.trim()}`;
       }
 
-      if (govAidContext && govAidContext.trim()) {
+      if (govAidContext.trim()) {
         systemPrompt += `\n\n${govAidContext.trim()}`;
       }
 
-      if (factsBlock && factsBlock.trim()) {
-        systemPrompt += `\n\n${factsBlock.trim()}\n\nCRITICAL CONTEXT RULE: Never re-ask for any fact that already appears in the fact block above.`;
+      if (
+        typeof factsBlock === "string" &&
+        factsBlock.trim()
+      ) {
+        systemPrompt +=
+          `\n\n${factsBlock.trim()}` +
+          `\n\nCRITICAL CONTEXT RULE: ` +
+          `Never re-ask for any fact that already appears ` +
+          `in the fact block above.`;
       }
 
-      if (ragContext && typeof ragContext === "string" && ragContext.trim()) {
+      if (
+        typeof ragContext === "string" &&
+        ragContext.trim()
+      ) {
         systemPrompt += `\n\n${ragContext.trim()}`;
       }
 
-      // Feed the AI real, per-case-ranked advocates so it recommends actual
-      // lawyers best suited to THIS matter instead of generic advice.
-      try {
-        const lastAssistant = Array.isArray(history)
-          ? [...history].reverse().find((h: any) => h.role === "assistant")?.content || ""
-          : "";
-        const caseText = `${prompt || ""} ${lastAssistant || ""}`.trim();
-        const caseCategory = String(req.body?.caseCategory || req.body?.category || "") || inferMatchCategory(caseText);
-        const excludedLawyerIds = Array.isArray(req.body?.excludedLawyerIds) ? req.body.excludedLawyerIds : [];
-        const lawyerBlock = await buildLawyerRecommendationBlock(caseText, caseCategory, excludedLawyerIds);
-        if (lawyerBlock) systemPrompt += `\n\n${lawyerBlock}`;
-      } catch (_e) {
-        // keep system prompt as-is on any lawyer-lookup failure
+      // ---------------------------------------------------------
+      // 4. Lawyer recommendation
+      //
+      // Do NOT query Supabase for every normal message.
+      // Only query when the conversation actually appears to
+      // require a lawyer recommendation.
+      // ---------------------------------------------------------
+      const lawyerIntentRegex =
+        /\b(lawyer|advocate|vakil|wakeel|vakeel|attorney|hire|connect|recommend|lawyer chahiye|vakil chahiye|wakeel chahiye|advocate chahiye)\b/i;
+
+      const shouldLoadLawyers =
+        lawyerIntentRegex.test(cleanPrompt);
+
+      if (shouldLoadLawyers) {
+        try {
+          const lastAssistant =
+            Array.isArray(history)
+              ? [...history]
+                  .reverse()
+                  .find(
+                    (item: any) =>
+                      item?.role === "assistant"
+                  )?.content || ""
+              : "";
+
+          const caseText =
+            `${cleanPrompt} ${lastAssistant}`.trim();
+
+          const caseCategory =
+            String(
+              req.body?.caseCategory ||
+                req.body?.category ||
+                ""
+            ) || inferMatchCategory(caseText);
+
+          const excludedLawyerIds =
+            Array.isArray(
+              req.body?.excludedLawyerIds
+            )
+              ? req.body.excludedLawyerIds
+              : [];
+
+          const lawyerStartedAt = Date.now();
+
+          const lawyerBlock =
+            await buildLawyerRecommendationBlock(
+              caseText,
+              caseCategory,
+              excludedLawyerIds
+            );
+
+          console.log(
+            `[AI] Lawyer lookup: ${
+              Date.now() - lawyerStartedAt
+            }ms`
+          );
+
+          if (lawyerBlock) {
+            systemPrompt += `\n\n${lawyerBlock}`;
+          }
+        } catch (error: any) {
+          console.warn(
+            "[AI] Lawyer recommendation failed:",
+            error?.message || error
+          );
+        }
       }
 
+      // ---------------------------------------------------------
+      // 5. Document / image analysis
+      // ---------------------------------------------------------
       if (file && file.data) {
-        let mimeType = file.mimeType || "image/jpeg";
-        if (!mimeType.includes("/")) mimeType = `image/${mimeType}`;
-        let cleanData = String(file.data);
-        if (cleanData.includes(";base64,")) {
-          cleanData = cleanData.split(";base64,")[1];
+        let mimeType =
+          file.mimeType || "image/jpeg";
+
+        if (!mimeType.includes("/")) {
+          mimeType = `image/${mimeType}`;
         }
 
-        const documentSystemPrompt = "You are an expert Indian Legal Document Verifier and high-speed OCR extractor for Mera Wakeel AI. Analyze the image accurately and respond with exact structured fields.";
+        let cleanData = String(file.data);
 
+        if (cleanData.includes(";base64,")) {
+          cleanData =
+            cleanData.split(";base64,")[1];
+        }
+
+        const documentSystemPrompt =
+          "You are an expert Indian Legal Document Verifier " +
+          "and high-speed OCR extractor for Mera Wakeel AI. " +
+          "Analyze the image accurately and respond with " +
+          "exact structured fields.";
+
+        // Gemini primary
         if (geminiApiKey) {
           try {
-            console.log("Analyzing document with Gemini 3.6 Flash Vision API...");
-            const replyText = await geminiGenerateContent({
-              model: "gemini-3.6-flash",
-              parts: [
-                { inlineData: { mimeType, data: cleanData } },
-                { text: prompt || "Analyze this document and extract all legal details." },
-              ],
-              systemInstruction: documentSystemPrompt,
-              temperature: 0.1,
-            });
-            if (replyText && replyText.trim()) {
-              return res.json({ text: replyText.trim() });
-            }
-          } catch (geminiErr: any) {
-            console.warn("Gemini 3.6 Flash vision error, attempting fallback:", geminiErr?.message || geminiErr);
-            try {
-              const replyTextFB = await geminiGenerateContent({
-                model: "gemini-flash-latest",
+            console.log(
+              "[AI] Analyzing document with Gemini..."
+            );
+
+            const replyText =
+              await geminiGenerateContent({
+                model: "gemini-3.6-flash",
                 parts: [
-                  { inlineData: { mimeType, data: cleanData } },
-                  { text: prompt || "Analyze this document and extract all legal details." },
+                  {
+                    inlineData: {
+                      mimeType,
+                      data: cleanData,
+                    },
+                  },
+                  {
+                    text:
+                      cleanPrompt ||
+                      "Analyze this document and extract all legal details.",
+                  },
                 ],
-                systemInstruction: documentSystemPrompt,
+                systemInstruction:
+                  documentSystemPrompt,
                 temperature: 0.1,
               });
-              if (replyTextFB && replyTextFB.trim()) {
-                return res.json({ text: replyTextFB.trim() });
+
+            if (replyText?.trim()) {
+              console.log(
+                `[AI] Document completed in ${
+                  Date.now() - requestStartedAt
+                }ms`
+              );
+
+              return res.json({
+                text: replyText.trim(),
+                provider: "gemini",
+              });
+            }
+          } catch (error: any) {
+            console.warn(
+              "[AI] Gemini primary vision failed:",
+              error?.message || error
+            );
+
+            // Gemini fallback
+            try {
+              const fallbackReply =
+                await geminiGenerateContent({
+                  model: "gemini-flash-latest",
+                  parts: [
+                    {
+                      inlineData: {
+                        mimeType,
+                        data: cleanData,
+                      },
+                    },
+                    {
+                      text:
+                        cleanPrompt ||
+                        "Analyze this document and extract all legal details.",
+                    },
+                  ],
+                  systemInstruction:
+                    documentSystemPrompt,
+                  temperature: 0.1,
+                });
+
+              if (fallbackReply?.trim()) {
+                return res.json({
+                  text: fallbackReply.trim(),
+                  provider: "gemini-fallback",
+                });
               }
-            } catch (fbErr) {
-              console.warn("Gemini fallback vision error:", fbErr);
+            } catch (fallbackError: any) {
+              console.warn(
+                "[AI] Gemini fallback failed:",
+                fallbackError?.message ||
+                  fallbackError
+              );
             }
           }
         }
 
-        const groqKey = process.env.GROQ_API_KEY || process.env.VITE_GROQ_API_KEY;
+        // Groq vision fallback
+        const groqKey =
+          process.env.GROQ_API_KEY ||
+          process.env.VITE_GROQ_API_KEY;
+
         if (groqKey) {
           try {
             const visionMessages: any[] = [
-              { role: "system", content: documentSystemPrompt },
+              {
+                role: "system",
+                content: documentSystemPrompt,
+              },
               {
                 role: "user",
                 content: [
-                  { type: "text", text: prompt || "Ye document/image dekho aur mujhe samjhao ki ye kya hai." },
+                  {
+                    type: "text",
+                    text:
+                      cleanPrompt ||
+                      "Analyze this legal document.",
+                  },
                   {
                     type: "image_url",
                     image_url: {
-                      url: `data:${mimeType};base64,${cleanData}`,
+                      url:
+                        `data:${mimeType};base64,` +
+                        cleanData,
                     },
                   },
                 ],
               },
             ];
 
-            let visionRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${groqKey}`,
-              },
-              body: JSON.stringify({
-                model: "openai/gpt-oss-120b",
-                messages: visionMessages,
-                temperature: 0.1,
-                max_tokens: 1024,
-              }),
-            });
+            const visionResponse = await fetch(
+              "https://api.groq.com/openai/v1/chat/completions",
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type":
+                    "application/json",
+                  Authorization:
+                    `Bearer ${groqKey}`,
+                },
+                body: JSON.stringify({
+                  model: "qwen/qwen3.6-27b",
+                  messages: visionMessages,
+                  temperature: 0.1,
+                  max_tokens: 1024,
+                }),
+              }
+            );
 
-            if (visionRes.ok) {
-              const vData = await visionRes.json();
-              let replyText = vData.choices?.[0]?.message?.content || "";
-              replyText = replyText.replace(/ thinking[\s\S]*?<\/think>/gi, '').trim();
+            if (visionResponse.ok) {
+              const data =
+                await visionResponse.json();
+
+              let replyText =
+                data.choices?.[0]?.message
+                  ?.content || "";
+
+              replyText = replyText
+                .replace(
+                  /<think>[\s\S]*?<\/think>/gi,
+                  ""
+                )
+                .trim();
+
               if (replyText) {
-                return res.json({ text: replyText });
+                return res.json({
+                  text: replyText,
+                  provider: "groq-vision",
+                });
               }
             } else {
-              const errBody = await visionRes.text();
-              console.warn("Groq vision failed:", visionRes.status, errBody);
+              const errorBody =
+                await visionResponse.text();
+
+              console.error(
+                "[AI] Groq vision error:",
+                visionResponse.status,
+                errorBody
+              );
             }
-          } catch (vErr: any) {
-            console.warn("Groq vision exception:", vErr?.message || vErr);
+          } catch (error: any) {
+            console.error(
+              "[AI] Groq vision exception:",
+              error?.message || error
+            );
           }
         }
 
         return res.status(503).json({
           error: "VISION_UNAVAILABLE",
-          message: "Document vision analysis is temporarily unavailable. Please ensure GEMINI_API_KEY is configured in Settings > Secrets or .env file."
+          message:
+            "Document analysis is temporarily unavailable.",
         });
       }
 
-      // ─── PRIMARY: Gemini Chat (multi-turn with history) ───
-      if (geminiApiKey) {
-        const geminiBase = "https://generativelanguage.googleapis.com/v1beta";
-        const contents: any[] = [];
-        if (history && Array.isArray(history)) {
-          for (const h of history) {
-            contents.push({
-              role: h.role === "user" ? "user" : "model",
-              parts: [{ text: typeof h.content === "string" ? h.content : String(h.content || "") }],
-            });
-          }
-        }
-        contents.push({
-          role: "user",
-          parts: [{ text: prompt || "Kripya kanooni sahayata pradan karein." }],
-        });
+      // ---------------------------------------------------------
+      // 6. Normal AI legal chat
+      // ---------------------------------------------------------
+      const groqKey =
+        process.env.GROQ_API_KEY ||
+        process.env.VITE_GROQ_API_KEY;
 
-        const geminiModels = ["gemini-2.5-flash", "gemini-2.0-flash"];
-        for (const geminiModel of geminiModels) {
-          try {
-            const url = `${geminiBase}/models/${geminiModel}:generateContent?key=${encodeURIComponent(geminiApiKey)}`;
-            const body: any = {
-              contents,
-              generationConfig: { temperature: 0.5 },
-            };
-            if (systemPrompt) {
-              body.systemInstruction = { parts: [{ text: systemPrompt }] };
-            }
-            const gResp = await fetch(url, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(body),
-            });
-            if (!gResp.ok) {
-              const errText = await gResp.text().catch(() => "");
-              console.warn(`[CHAT] Gemini ${geminiModel} HTTP ${gResp.status}:`, errText.slice(0, 200));
-              continue;
-            }
-            const gData: any = await gResp.json();
-            const replyParts = gData?.candidates?.[0]?.content?.parts || [];
-            let replyText = replyParts.map((p: any) => p.text || "").join("").trim();
-            if (replyText) {
-              console.log(`[CHAT] Gemini ${geminiModel} responded OK`);
-              return res.json({ text: replyText, detectedLanguage });
-            }
-          } catch (gErr: any) {
-            console.warn(`[CHAT] Gemini ${geminiModel} error:`, gErr?.message || gErr);
-          }
-        }
-        console.warn("[CHAT] All Gemini models failed, falling through to Groq...");
-      } else {
-        console.warn("[CHAT] No GEMINI_API_KEY configured — skipping Gemini");
+      if (!groqKey) {
+        console.error(
+          "[AI] GROQ_API_KEY is not configured."
+        );
+
+        return res.status(503).json({
+          error: "AI_NOT_CONFIGURED",
+          message:
+            "AI service is not configured on the server.",
+        });
       }
 
-      // ─── FALLBACK: Groq Chat ───
-      const groqKey = process.env.GROQ_API_KEY || process.env.VITE_GROQ_API_KEY;
-      if (groqKey) {
-        const messages: any[] = [
-          { role: "system", content: systemPrompt },
-        ];
+      const messages: any[] = [
+        {
+          role: "system",
+          content: systemPrompt,
+        },
+      ];
 
-        if (history && Array.isArray(history)) {
-          history.forEach((h: any) => {
-            messages.push({
-              role: h.role === "user" ? "user" : "assistant",
-              content: typeof h.content === "string" ? h.content : String(h.content || ""),
-            });
-          });
+      // ---------------------------------------------------------
+      // 7. Limit conversation history
+      //
+      // Sending unlimited history makes requests larger and
+      // slower as the consultation grows.
+      // ---------------------------------------------------------
+      const HISTORY_LIMIT = 12;
+
+      const safeHistory =
+        Array.isArray(history)
+          ? history.slice(-HISTORY_LIMIT)
+          : [];
+
+      safeHistory.forEach((item: any) => {
+        const content =
+          typeof item?.content === "string"
+            ? item.content.trim()
+            : String(
+                item?.content || ""
+              ).trim();
+
+        if (!content) {
+          return;
         }
 
         messages.push({
-          role: "user",
-          content: prompt || "Kripya kanooni sahayata pradan karein.",
+          role:
+            item?.role === "user"
+              ? "user"
+              : "assistant",
+          content,
         });
+      });
 
-        // Try primary model, fallback to smaller model if it fails
-        const models = ["openai/gpt-oss-120b", "qwen/qwen3.6-27b"];
-        for (const model of models) {
-          try {
-            const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      messages.push({
+        role: "user",
+        content:
+          cleanPrompt ||
+          "Please provide legal assistance.",
+      });
+
+      // ---------------------------------------------------------
+      // 8. Groq request helper with timeout
+      // ---------------------------------------------------------
+      const callGroq = async (
+        model: string
+      ) => {
+        const controller =
+          new AbortController();
+
+        // Prevent a request from hanging indefinitely.
+        const timeout = setTimeout(
+          () => controller.abort(),
+          30000
+        );
+
+        const startedAt = Date.now();
+
+        try {
+          const response = await fetch(
+            "https://api.groq.com/openai/v1/chat/completions",
+            {
               method: "POST",
               headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${groqKey}`,
+                "Content-Type":
+                  "application/json",
+                Authorization:
+                  `Bearer ${groqKey}`,
               },
+              signal: controller.signal,
               body: JSON.stringify({
                 model,
                 messages,
                 temperature: 0.5,
                 max_tokens: 1024,
               }),
-            });
-
-            if (response.ok) {
-              const data = await response.json();
-              let replyText = data.choices?.[0]?.message?.content || "";
-              replyText = replyText.replace(/ thinking[\s\S]*?<\/think>/gi, '').trim();
-              if (replyText) {
-                return res.json({ text: replyText, detectedLanguage });
-              }
-            } else {
-              const errBody = await response.text().catch(() => "");
-              console.warn(`[CHAT] Groq ${model} failed:`, response.status, errBody.slice(0, 200));
             }
-          } catch (fetchErr: any) {
-            console.warn(`[CHAT] Groq ${model} fetch error:`, fetchErr?.message || fetchErr);
-          }
+          );
+
+          const duration =
+            Date.now() - startedAt;
+
+          console.log(
+            `[AI] Groq ${model}: ` +
+              `${response.status} (${duration}ms)`
+          );
+
+          return response;
+        } finally {
+          clearTimeout(timeout);
         }
-      } else {
-        console.warn("[CHAT] No GROQ_API_KEY configured — cannot process chat");
+      };
+
+      // ---------------------------------------------------------
+      // 9. Primary model
+      // ---------------------------------------------------------
+      let response: Response | null = null;
+
+      try {
+        response = await callGroq(
+          "openai/gpt-oss-120b"
+        );
+      } catch (error: any) {
+        console.error(
+          "[AI] Primary model request failed:",
+          error?.name,
+          error?.message || error
+        );
       }
 
-      let fallbackText = "नमस्ते सर/मैडम, थोड़ा समय दें। नेटवर्क में कुछ धीमापन है, मैं अभी आपकी बात फिर से देख रही हूँ।";
-      if (language === "en") {
-        fallbackText = "Hello Sir/Ma'am, please give me just a moment. Connection is a bit slow right now, I am looking into your matter.";
-      } else if (language === "hinglish") {
-        fallbackText = "Namaste Sir/Ma'am, thoda waqt dein. Connection thoda slow hai, main abhi aapki baat dobara dekh rahi hoon.";
-      }
-      return res.json({ text: fallbackText, detectedLanguage });
+      // ---------------------------------------------------------
+      // 10. Primary response
+      // ---------------------------------------------------------
+      if (response?.ok) {
+        const data = await response.json();
 
-    } catch (err: any) {
-      console.error("Chat Endpoint Error:", err);
-      const lang = req.body?.language || "hi";
-      let fallbackText = "नमस्ते सर/मैडम, थोड़ा समय दें। नेटवर्क में कुछ धीमापन है, मैं अभी आपकी बात फिर से देख रही हूँ।";
-      if (lang === "en") {
-        fallbackText = "Hello Sir/Ma'am, please give me just a moment. Connection is a bit slow right now, I am looking into your matter.";
-      } else if (lang === "hinglish") {
-        fallbackText = "Namaste Sir/Ma'am, thoda waqt dein. Connection thoda slow hai, main abhi aapki baat dobara dekh rahi hoon.";
+        let replyText =
+          data.choices?.[0]?.message?.content ||
+          "";
+
+        replyText = replyText
+          .replace(
+            /<think>[\s\S]*?<\/think>/gi,
+            ""
+          )
+          .trim();
+
+        if (replyText) {
+          console.log(
+            `[AI] Request completed in ${
+              Date.now() - requestStartedAt
+            }ms using GPT-OSS 120B`
+          );
+
+          return res.json({
+            text: replyText,
+            detectedLanguage,
+            model: "openai/gpt-oss-120b",
+            fallback: false,
+          });
+        }
       }
-      return res.json({ text: fallbackText });
+
+      // ---------------------------------------------------------
+      // 11. Log actual primary error
+      // ---------------------------------------------------------
+      if (response && !response.ok) {
+        try {
+          const errorText =
+            await response.text();
+
+          console.error(
+            "[AI] GPT-OSS 120B failed:",
+            response.status,
+            errorText
+          );
+        } catch (_) {
+          console.error(
+            "[AI] GPT-OSS 120B failed:",
+            response.status
+          );
+        }
+      }
+
+      // ---------------------------------------------------------
+      // 12. Fallback model
+      // ---------------------------------------------------------
+      console.warn(
+        "[AI] Trying GPT-OSS 20B fallback..."
+      );
+
+      let fallbackResponse: Response | null =
+        null;
+
+      try {
+        fallbackResponse = await callGroq(
+          "openai/gpt-oss-20b"
+        );
+      } catch (error: any) {
+        console.error(
+          "[AI] Fallback model request failed:",
+          error?.name,
+          error?.message || error
+        );
+      }
+
+      if (fallbackResponse?.ok) {
+        const data =
+          await fallbackResponse.json();
+
+        let replyText =
+          data.choices?.[0]?.message?.content ||
+          "";
+
+        replyText = replyText
+          .replace(
+            /<think>[\s\S]*?<\/think>/gi,
+            ""
+          )
+          .trim();
+
+        if (replyText) {
+          console.log(
+            `[AI] Request completed in ${
+              Date.now() - requestStartedAt
+            }ms using GPT-OSS 20B fallback`
+          );
+
+          return res.json({
+            text: replyText,
+            detectedLanguage,
+            model: "openai/gpt-oss-20b",
+            fallback: true,
+          });
+        }
+      }
+
+      if (
+        fallbackResponse &&
+        !fallbackResponse.ok
+      ) {
+        try {
+          const errorText =
+            await fallbackResponse.text();
+
+          console.error(
+            "[AI] GPT-OSS 20B failed:",
+            fallbackResponse.status,
+            errorText
+          );
+        } catch (_) {
+          console.error(
+            "[AI] GPT-OSS 20B failed:",
+            fallbackResponse.status
+          );
+        }
+      }
+
+      // ---------------------------------------------------------
+      // 13. Both models failed
+      //
+      // Do not pretend that the user's internet is slow.
+      // ---------------------------------------------------------
+      return res.status(503).json({
+        error: "AI_SERVICE_UNAVAILABLE",
+        message:
+          detectedLanguage === "en"
+            ? "AI service is temporarily unavailable. Please try again."
+            : detectedLanguage === "hinglish"
+            ? "AI service abhi temporarily unavailable hai. Please thodi der baad try karein."
+            : "AI सेवा अभी अस्थायी रूप से उपलब्ध नहीं है। कृपया थोड़ी देर बाद पुनः प्रयास करें।",
+      });
+    } catch (error: any) {
+      console.error(
+        "[AI] Chat endpoint error:",
+        error?.stack ||
+          error?.message ||
+          error
+      );
+
+      return res.status(500).json({
+        error: "CHAT_REQUEST_FAILED",
+        message:
+          "Unable to process the AI request at this time.",
+      });
     }
   }
 
@@ -679,7 +1067,7 @@ export function registerAiRoutes(app: express.Express, ctx: ServerContext): void
         }
       }
 
-      const cleaned = fullText.replace(/ thinking[\s\S]*?<\/think>/gi, '').trim();
+      const cleaned = fullText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
       res.write(`data: ${JSON.stringify({ text: cleaned, done: true })}\n\n`);
       res.write("data: [DONE]\n\n");
       res.end();
@@ -713,7 +1101,7 @@ Answer technical questions concisely (2-4 sentences max), confidently, and accur
               "Authorization": `Bearer ${groqKey}`,
             },
             body: JSON.stringify({
-          model: "openai/gpt-oss-120b",
+              model: "openai/gpt-oss-120b",
               messages: [
                 { role: "system", content: systemPrompt },
                 { role: "user", content: question },
@@ -735,7 +1123,7 @@ Answer technical questions concisely (2-4 sentences max), confidently, and accur
       }
 
       return res.json({
-        answer: "Mera Wakeel AI combines hybrid RAG vector search over Indian Statutes with Groq Llama 3.3 70b and strict legal grounding rules for reliable AI-powered legal assistance.",
+        answer: "Mera Wakeel AI combines hybrid RAG vector search over Indian Statutes with Groq GPT-OSS 120B and strict legal grounding rules for reliable AI-powered legal assistance.",
         isFallback: true,
       });
     } catch (err: any) {
