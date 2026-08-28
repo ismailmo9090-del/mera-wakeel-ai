@@ -16,7 +16,7 @@ export async function askGroqAI(messages: GroqChatMessage[]): Promise<string> {
       },
       body: JSON.stringify({
         messages,
-        model: 'llama-3.3-70b-versatile',
+        model: 'qwen/qwen3.6-27b',
         temperature: 0.4,
       }),
     });

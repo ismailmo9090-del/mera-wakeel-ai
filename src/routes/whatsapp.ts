@@ -36,7 +36,7 @@ export function registerWhatsappRoutes(app: express.Express, ctx: ServerContext)
             method: "POST",
             headers: { "Content-Type": "application/json", "Authorization": `Bearer ${groqKey}` },
             body: JSON.stringify({
-              model: "llama-3.3-70b-versatile",
+              model: "qwen/qwen3.6-27b",
               messages: [
                 { role: "system", content: systemPrompt },
                 { role: "user", content: messageBody },

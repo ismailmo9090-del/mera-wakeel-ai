@@ -180,7 +180,7 @@ export function registerAiRoutes(app: express.Express, ctx: ServerContext): void
     }
 
     try {
-      const { messages, model = "llama-3.3-70b-versatile", temperature = 0.5 } = req.body;
+      const { messages, model = "qwen/qwen3.6-27b", temperature = 0.5 } = req.body;
 
       let response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
@@ -195,7 +195,7 @@ export function registerAiRoutes(app: express.Express, ctx: ServerContext): void
         }),
       });
 
-      if (!response.ok && model === "llama-3.3-70b-versatile") {
+      if (!response.ok && model === "qwen/qwen3.6-27b") {
         response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
           headers: {
@@ -203,7 +203,7 @@ export function registerAiRoutes(app: express.Express, ctx: ServerContext): void
             "Authorization": `Bearer ${groqKey}`,
           },
           body: JSON.stringify({
-            model: "llama-3.1-8b-instant",
+            model: "qwen/qwen3.8-27b",
             messages,
             temperature,
           }),
@@ -353,7 +353,7 @@ export function registerAiRoutes(app: express.Express, ctx: ServerContext): void
                 "Authorization": `Bearer ${groqKey}`,
               },
               body: JSON.stringify({
-                model: "llama-3.2-90b-vision-preview",
+                model: "openai/gpt-oss-120b",
                 messages: visionMessages,
                 temperature: 0.1,
                 max_tokens: 1024,
@@ -403,7 +403,7 @@ export function registerAiRoutes(app: express.Express, ctx: ServerContext): void
         });
 
         // Try primary model, fallback to smaller model if it fails
-        const models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"];
+        const models = ["qwen/qwen3.6-27b", "qwen/qwen3.8-27b"];
         for (const model of models) {
           try {
             const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -580,7 +580,7 @@ export function registerAiRoutes(app: express.Express, ctx: ServerContext): void
           "Authorization": `Bearer ${groqKey}`,
         },
         body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
+          model: "qwen/qwen3.6-27b",
           messages,
           temperature: 0.5,
           max_tokens: 1024,
@@ -658,7 +658,7 @@ Answer technical questions concisely (2-4 sentences max), confidently, and accur
               "Authorization": `Bearer ${groqKey}`,
             },
             body: JSON.stringify({
-              model: "llama-3.3-70b-versatile",
+          model: "qwen/qwen3.6-27b",
               messages: [
                 { role: "system", content: systemPrompt },
                 { role: "user", content: question },
