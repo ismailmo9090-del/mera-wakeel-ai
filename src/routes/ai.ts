@@ -180,7 +180,7 @@ export function registerAiRoutes(app: express.Express, ctx: ServerContext): void
     }
 
     try {
-      const { messages, model = "qwen/qwen3.6-27b", temperature = 0.5 } = req.body;
+      const { messages, model = "openai/gpt-oss-120b", temperature = 0.5 } = req.body;
 
       let response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
@@ -195,7 +195,7 @@ export function registerAiRoutes(app: express.Express, ctx: ServerContext): void
         }),
       });
 
-      if (!response.ok && model === "qwen/qwen3.6-27b") {
+      if (!response.ok && model === "openai/gpt-oss-120b") {
         response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
           headers: {
@@ -203,7 +203,7 @@ export function registerAiRoutes(app: express.Express, ctx: ServerContext): void
             "Authorization": `Bearer ${groqKey}`,
           },
           body: JSON.stringify({
-            model: "qwen/qwen3.8-27b",
+            model: "qwen/qwen3.6-27b",
             messages,
             temperature,
           }),
@@ -403,7 +403,7 @@ export function registerAiRoutes(app: express.Express, ctx: ServerContext): void
         });
 
         // Try primary model, fallback to smaller model if it fails
-        const models = ["qwen/qwen3.6-27b", "qwen/qwen3.8-27b"];
+        const models = ["openai/gpt-oss-120b", "qwen/qwen3.6-27b"];
         for (const model of models) {
           try {
             const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -580,7 +580,7 @@ export function registerAiRoutes(app: express.Express, ctx: ServerContext): void
           "Authorization": `Bearer ${groqKey}`,
         },
         body: JSON.stringify({
-          model: "qwen/qwen3.6-27b",
+          model: "openai/gpt-oss-120b",
           messages,
           temperature: 0.5,
           max_tokens: 1024,
@@ -658,7 +658,7 @@ Answer technical questions concisely (2-4 sentences max), confidently, and accur
               "Authorization": `Bearer ${groqKey}`,
             },
             body: JSON.stringify({
-          model: "qwen/qwen3.6-27b",
+          model: "openai/gpt-oss-120b",
               messages: [
                 { role: "system", content: systemPrompt },
                 { role: "user", content: question },
