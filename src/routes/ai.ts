@@ -382,6 +382,61 @@ export function registerAiRoutes(app: express.Express, ctx: ServerContext): void
         });
       }
 
+      // ─── PRIMARY: Gemini Chat (multi-turn with history) ───
+      if (geminiApiKey) {
+        const geminiBase = "https://generativelanguage.googleapis.com/v1beta";
+        const contents: any[] = [];
+        if (history && Array.isArray(history)) {
+          for (const h of history) {
+            contents.push({
+              role: h.role === "user" ? "user" : "model",
+              parts: [{ text: typeof h.content === "string" ? h.content : String(h.content || "") }],
+            });
+          }
+        }
+        contents.push({
+          role: "user",
+          parts: [{ text: prompt || "Kripya kanooni sahayata pradan karein." }],
+        });
+
+        const geminiModels = ["gemini-2.5-flash", "gemini-2.0-flash"];
+        for (const geminiModel of geminiModels) {
+          try {
+            const url = `${geminiBase}/models/${geminiModel}:generateContent?key=${encodeURIComponent(geminiApiKey)}`;
+            const body: any = {
+              contents,
+              generationConfig: { temperature: 0.5 },
+            };
+            if (systemPrompt) {
+              body.systemInstruction = { parts: [{ text: systemPrompt }] };
+            }
+            const gResp = await fetch(url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            });
+            if (!gResp.ok) {
+              const errText = await gResp.text().catch(() => "");
+              console.warn(`[CHAT] Gemini ${geminiModel} HTTP ${gResp.status}:`, errText.slice(0, 200));
+              continue;
+            }
+            const gData: any = await gResp.json();
+            const replyParts = gData?.candidates?.[0]?.content?.parts || [];
+            let replyText = replyParts.map((p: any) => p.text || "").join("").trim();
+            if (replyText) {
+              console.log(`[CHAT] Gemini ${geminiModel} responded OK`);
+              return res.json({ text: replyText, detectedLanguage });
+            }
+          } catch (gErr: any) {
+            console.warn(`[CHAT] Gemini ${geminiModel} error:`, gErr?.message || gErr);
+          }
+        }
+        console.warn("[CHAT] All Gemini models failed, falling through to Groq...");
+      } else {
+        console.warn("[CHAT] No GEMINI_API_KEY configured — skipping Gemini");
+      }
+
+      // ─── FALLBACK: Groq Chat ───
       const groqKey = process.env.GROQ_API_KEY || process.env.VITE_GROQ_API_KEY;
       if (groqKey) {
         const messages: any[] = [
