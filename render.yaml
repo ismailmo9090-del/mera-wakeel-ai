@@ -1,0 +1,38 @@
+# render.yaml — Mera Wakeel AI
+# Frontend (React + Vite) aur Backend (Express) DONO ek hi service mein host honge:
+# Express build ke baad dist/ ka frontend serve karta hai + /api/* routes chalata hai.
+# Deploy: render.com -> New + -> Web Service -> is repo ko connect karo -> yeh file auto-read ho jayegi.
+
+services:
+  - type: web
+    name: mera-wakeel-ai
+    env: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # ⚠️ VITE_* values DASHBOARD mein daalna BUILD se PEHLE (vite build time pe bake hoti hain)
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: VITE_GROQ_API_KEY
+        sync: false
+      - key: ADMIN_API_KEY
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_FROM_NUMBER
+        sync: false
+      - key: VITE_DOWNLOAD_APP_URL
+        sync: false
+      - key: DEADLINE_CRON
+        value: "30 3 * * *"
